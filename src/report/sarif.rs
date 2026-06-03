@@ -162,8 +162,13 @@ fn finding_to_result(f: &Finding) -> Result {
 pub fn render(findings: &[Finding]) -> String {
     let mut sorted = findings.to_vec();
     sorted.sort_by(|a, b| {
-        (&a.rule, &a.instruction, &a.account, a.line, a.column)
-            .cmp(&(&b.rule, &b.instruction, &b.account, b.line, b.column))
+        (&a.rule, &a.instruction, &a.account, a.line, a.column).cmp(&(
+            &b.rule,
+            &b.instruction,
+            &b.account,
+            b.line,
+            b.column,
+        ))
     });
     let log = SarifLog {
         schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
