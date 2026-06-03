@@ -69,9 +69,17 @@ jobs:
 
       - name: End-to-end scan against all fixtures
         run: |
+          # Disable errexit: sentinel intentionally exits non-zero on vulnerable
+          # fixtures, and the loop below inspects $? explicitly. With `set -e`
+          # the script aborts on the first non-zero exit before the if/elif/else
+          # branches can run.
+          set +e
           SENTINEL=./target/release/sentinel
           FAIL=0
-          for fixture in tests/fixtures/*/; do
+          # Only consider fixtures that contain a `programs/` subdirectory.
+          # This excludes grouping directories (e.g. `public/`) and stub
+          # directories that have no Anchor program to scan.
+          for fixture in $(find tests/fixtures -mindepth 1 -maxdepth 1 -type d -exec test -d {}/programs \; -print | sort); do
             name="$(basename "$fixture")"
             echo "==> scanning $name (strict mode)"
             output=$($SENTINEL scan --strict "$fixture" 2>&1)
@@ -85,7 +93,8 @@ jobs:
               FAIL=1
             fi
             # Verify scanner produced recognizable output (not a crash).
-            if echo "$output" | grep -q "finding\|no findings\|error"; then
+            # Match on text report markers like severity tags or `message:` lines.
+            if echo "$output" | grep -qE 'no findings|message:|\[(CRITICAL|HIGH|MEDIUM|LOW|INFO)\]'; then
               echo "  output: OK"
             else
               echo "  ERROR: scanner produced no recognizable output"
