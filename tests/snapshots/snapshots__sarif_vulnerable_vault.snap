@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 89
 expression: stripped
 ---
 {
@@ -302,6 +301,16 @@ expression: stripped
               },
               "shortDescription": {
                 "text": "Multiple mutable `AccountInfo` args could reference the same pubkey"
+              }
+            },
+            {
+              "id": "integer_cast_truncation",
+              "name": "integer_cast_truncation",
+              "properties": {
+                "security-severity": 5.5
+              },
+              "shortDescription": {
+                "text": "Detects `as` casts that may silently truncate a wider integer into a narrower one (e.g. u64 → u8)."
               }
             },
             {

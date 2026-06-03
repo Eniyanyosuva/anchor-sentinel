@@ -1,0 +1,72 @@
+{
+  "version": "0.30.0",
+  "name": "vault",
+  "instructions": [
+    {
+      "name": "deposit",
+      "accounts": [
+        { "name": "user",  "writable": true,  "signer": true },
+        { "name": "vault", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "withdraw",
+      "accounts": [
+        { "name": "user",  "writable": false, "signer": true },
+        { "name": "vault", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [9, 10, 11, 12, 13, 14, 15, 16]
+    },
+    {
+      "name": "audit",
+      "accounts": [
+        { "name": "auditor", "writable": false, "signer": true  },
+        { "name": "vault",   "writable": false, "signer": false },
+        { "name": "audit",   "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [17, 18, 19, 20, 21, 22, 23, 24]
+    }
+  ],
+  "accounts": [
+    { "name": "CastVault", "discriminator": [100, 101, 102, 103, 104, 105, 106, 107] },
+    { "name": "CastAudit", "discriminator": [108, 109, 110, 111, 112, 113, 114, 115] }
+  ],
+  "types": [
+    {
+      "name": "CastVault",
+      "kind": "struct",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "balance", "type": "u8"  },
+          { "name": "payout",  "type": "u16" }
+        ]
+      }
+    },
+    {
+      "name": "CastAudit",
+      "kind": "struct",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "last_value", "type": "u16" },
+          { "name": "last_raw",   "type": "u64" }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    { "code": 6000, "name": "Overflow", "msg": "Cast overflow." }
+  ]
+}

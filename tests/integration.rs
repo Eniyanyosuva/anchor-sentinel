@@ -127,7 +127,64 @@ fn rules_subcommand_lists_all_rules() {
         .stdout(predicate::str::contains(
             "missing_bump_seed_canonicalization",
         ))
-        .stdout(predicate::str::contains("duplicate_mutable_accounts"));
+        .stdout(predicate::str::contains("duplicate_mutable_accounts"))
+        .stdout(predicate::str::contains("integer_cast_truncation"));
+}
+
+#[test]
+fn cast_vulnerable_triggers_integer_cast_truncation() {
+    // The cast-vulnerable fixture narrows `u64` `amount` parameters into
+    // `u8`/`u16` fields. The rule should fire on those and skip the
+    // widening cast (`u8 → u16`) and the same-width cast (`u64 → u64`).
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cast-vulnerable");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let rules: Vec<&str> = arr.iter().map(|f| f["rule"].as_str().unwrap()).collect();
+    let cast_findings: Vec<_> = arr
+        .iter()
+        .filter(|f| f["rule"] == "integer_cast_truncation")
+        .collect();
+    assert!(
+        rules.contains(&"integer_cast_truncation"),
+        "expected integer_cast_truncation, got: {rules:?}"
+    );
+    // Two narrowing casts in the fixture: `u64 → u8` (deposit) and
+    // `u64 → u16` (withdraw). The widening `u8 → u16` in `audit` and
+    // the same-width `u64 → u64` must not appear.
+    assert_eq!(
+        cast_findings.len(),
+        2,
+        "expected 2 integer_cast_truncation findings, got {}: {}",
+        cast_findings.len(),
+        serde_json::to_string_pretty(&cast_findings).unwrap()
+    );
+}
+
+#[test]
+fn clean_vault_has_no_integer_cast_truncation() {
+    // The clean vault uses no narrowing casts.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-clean");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let has = arr.iter().any(|f| f["rule"] == "integer_cast_truncation");
+    assert!(
+        !has,
+        "expected no integer_cast_truncation findings on clean vault, got:\n{stdout}"
+    );
 }
 
 #[test]

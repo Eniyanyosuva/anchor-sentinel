@@ -8,6 +8,7 @@ use crate::engine::Severity;
 use crate::engine::{registry::RuleFactory, Rule};
 
 pub mod duplicate_mutable_accounts;
+pub mod integer_cast_truncation;
 pub mod lamports_drain;
 pub mod missing_balance_check;
 pub mod missing_bump_seed_canonicalization;
@@ -50,6 +51,9 @@ inventory::submit! {
 }
 inventory::submit! {
     RuleFactory { build: || Arc::new(unchecked_balance_flow::UncheckedBalanceFlow) as Arc<dyn Rule> }
+}
+inventory::submit! {
+    RuleFactory { build: || Arc::new(integer_cast_truncation::IntegerCastTruncation) as Arc<dyn Rule> }
 }
 
 /// Rule metadata without instantiation — used by SARIF output and

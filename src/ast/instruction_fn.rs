@@ -13,7 +13,7 @@
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{BinOp, Expr, ExprBinary, ImplItem, ImplItemFn, Item, Type};
+use syn::{BinOp, Expr, ExprBinary, ExprCast, ImplItem, ImplItemFn, Item, Type};
 
 use crate::engine::AstHintKind;
 
@@ -243,6 +243,26 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
         }
 
         visit::visit_expr_binary(self, e);
+    }
+
+    fn visit_expr_cast(&mut self, e: &'ast ExprCast) {
+        // `as` cast between integer types. The `integer_cast_truncation`
+        // rule fires only when the destination is narrower than the source
+        // (silent truncation); widening casts are emitted for completeness
+        // so future rules can reuse the hint.
+        let from_ty = expr_type_name(&e.expr);
+        let to_ty = type_name(&e.ty);
+        if (is_int_type(&from_ty) || looks_like_int(&from_ty))
+            && is_int_type(&to_ty)
+            && !from_ty.is_empty()
+        {
+            let start = e.as_token.span.start();
+            self.hints.push(RawHint {
+                kind: AstHintKind::IntegerCast { from_ty, to_ty },
+                start,
+            });
+        }
+        visit::visit_expr_cast(self, e);
     }
 
     fn visit_expr_assign(&mut self, e: &'ast syn::ExprAssign) {
@@ -581,6 +601,16 @@ fn expr_type_name(e: &Expr) -> String {
         Expr::Field(f) => expr_type_name(&f.base),
         Expr::MethodCall(m) => expr_type_name(&m.receiver),
         Expr::Binary(b) => expr_type_name(&b.left),
+        _ => String::new(),
+    }
+}
+
+/// Best-effort name of a `syn::Type` for the `as` cast visitor. Covers the
+/// common integer primitives; anything else returns an empty string, which
+/// makes the rule skip the hint.
+fn type_name(t: &Type) -> String {
+    match t {
+        Type::Path(p) => last_path_segment(&p.path),
         _ => String::new(),
     }
 }

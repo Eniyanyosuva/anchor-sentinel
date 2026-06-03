@@ -268,6 +268,12 @@ pub enum AstHintKind {
     LamportsZero { account: String, seq: usize },
     /// CPI that may transfer lamports (`invoke` / `invoke_signed`).
     CpiTransfer { target: String, seq: usize },
+    /// An `as` cast between two integer-typed expressions. The rule
+    /// `integer_cast_truncation` only fires when the source is wider than
+    /// the destination (e.g. `u64` → `u8`); widening casts are emitted too
+    /// so future rules (overflow on downcast, lossy float→int) can reuse
+    /// the hint.
+    IntegerCast { from_ty: String, to_ty: String },
 }
 
 /// The interface every rule implements.
