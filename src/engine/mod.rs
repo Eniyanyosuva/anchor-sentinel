@@ -214,6 +214,26 @@ impl SourceLocation {
     }
 }
 
+/// Safety classification for the signer-seeds argument of an
+/// `invoke_signed` call. The `cpi_signer_seed_validation` rule uses this
+/// to decide whether to fire a Critical finding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SignerSeedClass {
+    /// All seed slices are composed of canonical sources:
+    /// `b"..."` literals, `ctx.bumps.<ident>`, or `.key().as_ref()` on
+    /// a known account field. The seeds can be trusted to identify a
+    /// real PDA.
+    Safe,
+    /// At least one seed slice contains a function arg, an unresolvable
+    /// expression, or anything else the AST layer can't verify. The
+    /// seeds may identify an attacker-controlled address.
+    Dynamic,
+    /// The third argument was present but empty — equivalent to `invoke`
+    /// (no signers). Most often a programmer mistake; not strictly
+    /// exploitable, so the rule currently does not fire on it.
+    Absent,
+}
+
 #[derive(Debug, Clone)]
 pub enum AstHintKind {
     /// A field of an `#[derive(Accounts)]` struct.
@@ -268,6 +288,29 @@ pub enum AstHintKind {
     LamportsZero { account: String, seq: usize },
     /// CPI that may transfer lamports (`invoke` / `invoke_signed`).
     CpiTransfer { target: String, seq: usize },
+    /// `invoke_signed` call with the signer-seeds safety classification.
+    /// The `cpi_signer_seed_validation` rule fires Critical findings for
+    /// `Seeds::Dynamic` — i.e. seeds that contain function args or any
+    /// expression the AST layer can't verify as canonical. `Seeds::Safe`
+    /// means every seed slice was either a `b"..."` literal, a
+    /// `ctx.bumps.<ident>` canonical bump, or a `.key().as_ref()` on a
+    /// known account. `Seeds::Absent` is the rare case where the third
+    /// argument was empty (no signers, equivalent to plain `invoke`).
+    CpiInvokeSigned {
+        /// The CPI target. Currently unused by the rule but kept for
+        /// future cross-referencing and to maintain symmetry with
+        /// `CpiTransfer`.
+        #[allow(dead_code)]
+        target: String,
+        /// Monotonic sequence number for ordering. Currently unused.
+        #[allow(dead_code)]
+        seq: usize,
+        seeds: SignerSeedClass,
+        /// Short human description of the seeds for the rule's finding
+        /// message — e.g. `"b\"vault\", ctx.bumps.vault"` or
+        /// `"args.bump (function arg)"`.
+        seed_summary: String,
+    },
     /// An `as` cast between two integer-typed expressions. The rule
     /// `integer_cast_truncation` only fires when the source is wider than
     /// the destination (e.g. `u64` → `u8`); widening casts are emitted too

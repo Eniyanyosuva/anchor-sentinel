@@ -129,7 +129,8 @@ fn rules_subcommand_lists_all_rules() {
         ))
         .stdout(predicate::str::contains("duplicate_mutable_accounts"))
         .stdout(predicate::str::contains("integer_cast_truncation"))
-        .stdout(predicate::str::contains("missing_close_authority"));
+        .stdout(predicate::str::contains("missing_close_authority"))
+        .stdout(predicate::str::contains("cpi_signer_seed_validation"));
 }
 
 #[test]
@@ -250,6 +251,68 @@ fn close_clean_has_no_missing_close_authority() {
     assert!(
         !has,
         "expected no missing_close_authority findings on close-clean, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn cpi_vulnerable_triggers_cpi_signer_seed_validation() {
+    // The cpi-vulnerable fixture has three handlers that call
+    // `invoke_signed` with seeds the AST layer can't verify:
+    //   1. `withdraw_arg_bump` uses a `user_bump` function arg
+    //   2. `withdraw_arg_bump_byte` uses a `bump` function arg
+    //   3. `withdraw_local_bump` uses a locally-bound `bump` variable
+    // The `withdraw_attacker_key` handler has canonical seeds but a
+    // different vulnerability (no signer check on `attacker`), so it
+    // is correctly skipped by this rule.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cpi-vulnerable");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let seed_findings: Vec<_> = arr
+        .iter()
+        .filter(|f| f["rule"] == "cpi_signer_seed_validation")
+        .collect();
+    assert_eq!(
+        seed_findings.len(),
+        3,
+        "expected 3 cpi_signer_seed_validation findings, got {}: {}",
+        seed_findings.len(),
+        serde_json::to_string_pretty(&seed_findings).unwrap()
+    );
+    for f in &seed_findings {
+        assert_eq!(
+            f["severity"], "critical",
+            "expected critical severity, got: {f}"
+        );
+    }
+}
+
+#[test]
+fn cpi_clean_has_no_cpi_signer_seed_validation() {
+    // The cpi-clean fixture uses canonical seed forms across all three
+    // handlers: byte literals, `ctx.accounts.user.key().as_ref()`, and
+    // `ctx.bumps.<field>`. None should trigger the rule.
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cpi-clean");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let has = arr
+        .iter()
+        .any(|f| f["rule"] == "cpi_signer_seed_validation");
+    assert!(
+        !has,
+        "expected no cpi_signer_seed_validation findings on cpi-clean, got:\n{stdout}"
     );
 }
 

@@ -5,17 +5,22 @@
 //!   - `AstHintKind::LamportsDebit` / `LamportsCredit` for lamports +=/ -=
 //!   - `AstHintKind::BalanceCheck` for `>=`, `require!`, etc. guards
 //!   - `AstHintKind::LamportsZero` for `lamports = 0` / `set_lamports(0)`
-//!   - `AstHintKind::CpiTransfer` for `invoke` / `invoke_signed`
-//!
-//! CPI detection (calls to `invoke` / `invoke_signed`) is also captured but
-//! not emitted as a hint yet — Week 3 will add a `cpi_safety` rule.
+//!   - `AstHintKind::CpiTransfer` for `invoke` / `invoke_signed` calls
+//!   - `AstHintKind::CpiInvokeSigned` for `invoke_signed` calls with the
+//!     signer-seeds safety classification that drives the
+//!     `cpi_signer_seed_validation` rule.
 
 use quote::ToTokens;
+use syn::parse::Parser;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{BinOp, Expr, ExprBinary, ExprCast, ImplItem, ImplItemFn, Item, Type};
+use syn::{
+    BinOp, Expr, ExprArray, ExprBinary, ExprCall, ExprCast, ExprReference, ImplItem, ImplItemFn,
+    Item, Type,
+};
 
-use crate::engine::AstHintKind;
+use crate::engine::{AstHintKind, SignerSeedClass};
 
 /// A single raw hint waiting for span resolution.
 #[derive(Debug)]
@@ -298,6 +303,41 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
         visit::visit_expr_method_call(self, e);
     }
 
+    fn visit_expr_call(&mut self, e: &'ast ExprCall) {
+        // Function-form `invoke_signed(&ix, accounts, &[...seeds...])`.
+        // We also catch `solana_program::program::invoke_signed(...)` and
+        // any other path that ends in `invoke_signed`.
+        let path_str = expr_path_name(&e.func);
+        if path_str.as_deref().is_some_and(is_invoke_signed_path) {
+            let target = "invoke".to_string();
+            let seq = self.next_seq();
+            let start = e.func.span().start();
+            self.hints.push(RawHint {
+                kind: AstHintKind::CpiTransfer {
+                    target: target.clone(),
+                    seq,
+                },
+                start,
+            });
+            // The function call's 3rd argument is the seeds expression.
+            // We reuse the same classifier that handles the macro form.
+            let (seeds, summary) = match e.args.iter().nth(2) {
+                Some(arg) => classify_seed_argument(arg),
+                None => (crate::engine::SignerSeedClass::Absent, String::new()),
+            };
+            self.hints.push(RawHint {
+                kind: AstHintKind::CpiInvokeSigned {
+                    target,
+                    seq,
+                    seeds,
+                    seed_summary: summary,
+                },
+                start,
+            });
+        }
+        visit::visit_expr_call(self, e);
+    }
+
     fn visit_expr_macro(&mut self, e: &'ast syn::ExprMacro) {
         let mac_path = e.mac.path.to_token_stream().to_string().replace(' ', "");
         // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
@@ -333,9 +373,27 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
             let seq = self.next_seq();
             let start = e.mac.path.span().start();
             self.hints.push(RawHint {
-                kind: AstHintKind::CpiTransfer { target, seq },
+                kind: AstHintKind::CpiTransfer {
+                    target: target.clone(),
+                    seq,
+                },
                 start,
             });
+            // For `invoke_signed`, additionally inspect the 3rd argument
+            // (the signer-seeds array) so the cpi_signer_seed_validation
+            // rule can fire Critical findings on dynamic seeds.
+            if mac_path.ends_with("invoke_signed") {
+                let (seeds, summary) = classify_invoke_signed_seeds(&e.mac.tokens);
+                self.hints.push(RawHint {
+                    kind: AstHintKind::CpiInvokeSigned {
+                        target,
+                        seq,
+                        seeds,
+                        seed_summary: summary,
+                    },
+                    start,
+                });
+            }
         }
         visit::visit_expr_macro(self, e);
     }
@@ -378,9 +436,25 @@ fn visit_stmt_macro(visitor: &mut BalanceVisitor, sm: &syn::StmtMacro) {
         let seq = visitor.next_seq();
         let start = sm.mac.path.span().start();
         visitor.hints.push(RawHint {
-            kind: AstHintKind::CpiTransfer { target, seq },
+            kind: AstHintKind::CpiTransfer {
+                target: target.clone(),
+                seq,
+            },
             start,
         });
+        if mac_path.ends_with("invoke_signed") {
+            let (seeds, summary) = classify_invoke_signed_seeds(&sm.mac.tokens);
+            eprintln!("DEBUG invoke_signed: seeds={seeds:?} summary={summary:?}");
+            visitor.hints.push(RawHint {
+                kind: AstHintKind::CpiInvokeSigned {
+                    target,
+                    seq,
+                    seeds,
+                    seed_summary: summary,
+                },
+                start,
+            });
+        }
     }
 }
 
@@ -577,6 +651,227 @@ fn extract_cpi_target(_tokens: &proc_macro2::TokenStream) -> String {
     // Heuristic: the first account-like argument in the invoke call.
     // This is intentionally rough — the rule using this hint is heuristic anyway.
     "invoke".to_string()
+}
+
+/// Classify the signer-seeds argument of an `invoke_signed!` call.
+///
+/// The macro form is `invoke_signed!(instruction, accounts, &[&[seed1, seed2, ...], ...])`.
+/// The third argument is a `&[&[&[u8]]]`. We treat the *inner* slices
+/// (one per signer) independently — each must be entirely Safe for the
+/// whole call to be Safe.
+///
+/// A seed is **Safe** when its expression is one of:
+///   - a `b"..."` byte string literal,
+///   - `ctx.bumps.<ident>` — the canonical bump Anchor manages for the PDA,
+///   - `<expr>.key().as_ref()` on a known account field.
+///
+/// A seed is **Dynamic** when it includes function args, locally-bound
+/// variables not traceable to a known account, or any other expression
+/// the AST layer cannot verify.
+fn classify_invoke_signed_seeds(tokens: &proc_macro2::TokenStream) -> (SignerSeedClass, String) {
+    // Parse the macro body as a comma-separated list of expressions.
+    let parser = Punctuated::<Expr, syn::Token![,]>::parse_terminated;
+    let args: Punctuated<Expr, _> = match parser.parse2(tokens.clone()) {
+        Ok(p) => p,
+        Err(_) => return (SignerSeedClass::Absent, String::new()),
+    };
+    // 3rd argument: the signer-seeds array. The 1st is the instruction,
+    // the 2nd is the AccountInfos. 0-indexed, that's args[2].
+    let seeds_expr = match args.iter().nth(2) {
+        Some(e) => e,
+        None => return (SignerSeedClass::Absent, String::new()),
+    };
+    classify_seed_argument(seeds_expr)
+}
+
+/// Classify a signer-seeds expression that we already have in hand
+/// (function-call form: the 3rd argument of `invoke_signed(&ix, …, seeds)`).
+fn classify_seed_argument(seeds_expr: &Expr) -> (SignerSeedClass, String) {
+    // Walk the outer `&[ ... ]` to find the inner slice(s).
+    let inner_slices = match collect_seed_slices(seeds_expr) {
+        Some(v) => v,
+        None => return (SignerSeedClass::Absent, String::new()),
+    };
+    if inner_slices.is_empty() {
+        return (SignerSeedClass::Absent, String::new());
+    }
+
+    let mut class = SignerSeedClass::Safe;
+    let mut summary_parts: Vec<String> = Vec::new();
+    for slice in inner_slices {
+        for seed in &slice.elems {
+            let (seed_safe, desc) = classify_seed_expression(seed);
+            if !seed_safe {
+                class = SignerSeedClass::Dynamic;
+            }
+            summary_parts.push(desc);
+        }
+        summary_parts.push("|".to_string());
+    }
+    if !summary_parts.is_empty() {
+        summary_parts.pop(); // drop trailing `|`
+    }
+    (class, summary_parts.join(" "))
+}
+
+/// Returns the path name of an `Expr` if it's a plain path expression.
+/// Used to detect `solana_program::program::invoke_signed(...)` etc.
+fn expr_path_name(e: &Expr) -> Option<String> {
+    match e {
+        Expr::Path(p) => Some(
+            p.path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect::<Vec<_>>()
+                .join("::"),
+        ),
+        _ => None,
+    }
+}
+
+/// True if the path ends in `invoke_signed` or any qualified variant
+/// like `solana_program::program::invoke_signed`. The trailing-segment
+/// match is intentional — it accepts the function form, the
+/// `solana_program::program::` form, and any future re-export.
+fn is_invoke_signed_path(path: &str) -> bool {
+    path == "invoke_signed"
+        || path.ends_with("::invoke_signed")
+        || path.ends_with("::program::invoke_signed")
+}
+
+/// Walk an expression that should evaluate to `&[&[u8], &[u8], ...]` and
+/// return the inner `&[u8]` expressions (one per signer).
+///
+/// Anchor programs wrap the seeds in `&[&[ ... ]]` — the outer `&[…]` is
+/// the signer list, each `&[ … ]` is one signer's seed set. We strip one
+/// or two levels of `Expr::Reference` to reach the underlying array.
+fn collect_seed_slices(e: &Expr) -> Option<Vec<&ExprArray>> {
+    // The expression is typically `&[&[a, b, c], &[d, e]]`. The outermost
+    // shape is `Expr::Reference(_, Expr::Array(...))`. Strip the `&` to
+    // get the array of inner slices.
+    let outer = strip_reference(e)?;
+    let outer_array = match outer {
+        Expr::Array(a) => a,
+        _ => return None,
+    };
+    let mut out = Vec::new();
+    for elem in &outer_array.elems {
+        // Each element is typically `&[a, b, c]`. Strip the `&` to get
+        // the inner array. We also accept a bare array (no `&`) since
+        // some code uses that form.
+        let inner = strip_reference(elem)?;
+        if let Expr::Array(inner_array) = inner {
+            out.push(inner_array);
+        } else {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+/// If `e` is `&inner` or `&mut inner`, return the inner expression.
+fn strip_reference(e: &Expr) -> Option<&Expr> {
+    if let Expr::Reference(ExprReference { expr, .. }) = e {
+        Some(expr)
+    } else {
+        Some(e)
+    }
+}
+
+/// Classify a single seed expression as Safe or not, returning a short
+/// description for the rule's finding message.
+fn classify_seed_expression(e: &Expr) -> (bool, String) {
+    // Seeds are often written as `&[ctx.bumps.vault]` — the outer `&` is
+    // part of the seed expression but is irrelevant for safety. Strip it
+    // so the inner array can be classified correctly.
+    let inner = strip_reference(e).unwrap_or(e);
+    let raw = inner
+        .to_token_stream()
+        .to_string()
+        .replace(char::is_whitespace, "");
+    match inner {
+        // `b"vault"` — byte string literal.
+        Expr::Lit(lit) => {
+            if let syn::Lit::ByteStr(_) | syn::Lit::Str(_) | syn::Lit::Byte(_) = &lit.lit {
+                (true, raw)
+            } else {
+                (false, format!("{raw} (non-byte literal)"))
+            }
+        }
+        // `&[bump]` — array of a single integer expression. Safe if the
+        // expression is `ctx.bumps.<ident>`; dynamic otherwise.
+        Expr::Array(arr) => {
+            if arr.elems.len() == 1 {
+                let only = &arr.elems[0];
+                if is_canonical_bump(only) {
+                    (true, format!("[{}]", only.to_token_stream()))
+                } else {
+                    (
+                        false,
+                        format!("[{}] (non-canonical bump)", only.to_token_stream()),
+                    )
+                }
+            } else {
+                (false, format!("{raw} (multi-element seed array)"))
+            }
+        }
+        // `ctx.bumps.vault` — canonical bump path.
+        _ if is_canonical_bump(e) => (true, raw),
+        // `ctx.accounts.user.key().as_ref()` — known account key.
+        _ if is_account_key_ref(e) => (true, raw),
+        // Anything else is treated as dynamic (user input, function arg,
+        // unresolvable expression).
+        _ => (false, format!("{raw} (function arg or unresolvable)")),
+    }
+}
+
+/// True if `e` is `ctx.bumps.<ident>` — Anchor's canonical bump access.
+///
+/// The expression has the shape `ctx.bumps.<member>`, i.e. an outer
+/// `Expr::Field` whose `member` is the field name, whose `base` is
+/// `ctx.bumps` (a nested `Expr::Field` whose `member` is `bumps` and
+/// `base` is a `ctx` path), and the leaf `base` is an `Expr::Path`
+/// whose only segment is `ctx`.
+fn is_canonical_bump(e: &Expr) -> bool {
+    let outer = match e {
+        Expr::Field(f) => f,
+        _ => return false,
+    };
+    let middle = match &*outer.base {
+        Expr::Field(f) => f,
+        _ => return false,
+    };
+    if !matches!(middle.member, syn::Member::Named(ref n) if n == "bumps") {
+        return false;
+    }
+    let leaf = match &*middle.base {
+        Expr::Path(p) => p,
+        _ => return false,
+    };
+    if leaf.path.segments.len() != 1 {
+        return false;
+    }
+    leaf.path.segments[0].ident == "ctx"
+}
+
+/// True if `e` is `<expr>.key().as_ref()` — the canonical form to grab
+/// an account's pubkey as a seed byte slice.
+fn is_account_key_ref(e: &Expr) -> bool {
+    if let Expr::MethodCall(call) = e {
+        if call.method == "as_ref" {
+            if let Expr::MethodCall(inner) = &*call.receiver {
+                if inner.method == "key" {
+                    // Receiver is `<expr>.key()`. The `<expr>` should be
+                    // a field access like `ctx.accounts.user` — but we
+                    // accept any path expression as a reasonable
+                    // approximation.
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Convert an expression to a short string representation for the amount hint.

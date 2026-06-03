@@ -294,6 +294,16 @@ expression: stripped
           "name": "anchor-sentinel",
           "rules": [
             {
+              "id": "cpi_signer_seed_validation",
+              "name": "cpi_signer_seed_validation",
+              "properties": {
+                "security-severity": 9.5
+              },
+              "shortDescription": {
+                "text": "invoke_signed uses dynamic signer seeds that cannot be verified at analysis time"
+              }
+            },
+            {
               "id": "duplicate_mutable_accounts",
               "name": "duplicate_mutable_accounts",
               "properties": {

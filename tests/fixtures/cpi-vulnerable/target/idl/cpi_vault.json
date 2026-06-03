@@ -1,0 +1,78 @@
+{
+  "version": "0.30.0",
+  "name": "cpi_vault",
+  "instructions": [
+    {
+      "name": "withdraw_arg_bump",
+      "accounts": [
+        { "name": "user",        "writable": false, "signer": true  },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "user_bump", "type": "u8" }
+      ],
+      "discriminator": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "withdraw_attacker_key",
+      "accounts": [
+        { "name": "attacker",    "writable": false, "signer": false },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [],
+      "discriminator": [9, 10, 11, 12, 13, 14, 15, 16]
+    },
+    {
+      "name": "withdraw_arg_bump_byte",
+      "accounts": [
+        { "name": "user",        "writable": false, "signer": true  },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "bump", "type": "u8" }
+      ],
+      "discriminator": [17, 18, 19, 20, 21, 22, 23, 24]
+    },
+    {
+      "name": "withdraw_local_bump",
+      "accounts": [
+        { "name": "user",        "writable": false, "signer": true  },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [],
+      "discriminator": [25, 26, 27, 28, 29, 30, 31, 32]
+    },
+    {
+      "name": "withdraw_dynamic",
+      "accounts": [
+        { "name": "user",  "writable": false, "signer": true  },
+        { "name": "vault", "writable": false, "signer": false }
+      ],
+      "args": [
+        { "name": "seeds", "type": "vecVecU8" }
+      ],
+      "discriminator": [33, 34, 35, 36, 37, 38, 39, 40]
+    }
+  ],
+  "accounts": [
+    { "name": "Vault", "discriminator": [100, 101, 102, 103, 104, 105, 106, 107] }
+  ],
+  "types": [
+    {
+      "name": "Vault",
+      "kind": "struct",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": []
+}

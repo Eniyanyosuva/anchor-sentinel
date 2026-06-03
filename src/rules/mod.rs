@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::engine::Severity;
 use crate::engine::{registry::RuleFactory, Rule};
 
+pub mod cpi_signer_seed_validation;
 pub mod duplicate_mutable_accounts;
 pub mod integer_cast_truncation;
 pub mod lamports_drain;
@@ -58,6 +59,9 @@ inventory::submit! {
 }
 inventory::submit! {
     RuleFactory { build: || Arc::new(missing_close_authority::MissingCloseAuthority) as Arc<dyn Rule> }
+}
+inventory::submit! {
+    RuleFactory { build: || Arc::new(cpi_signer_seed_validation::CpiSignerSeedValidation) as Arc<dyn Rule> }
 }
 
 /// Rule metadata without instantiation — used by SARIF output and
