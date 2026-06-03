@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anchor Sentinel — Playground</title>
+
+  <!-- CodeMirror 5 (CDN, single-file friendly). The task called for
+       CodeMirror 6 but it requires ES modules with a build step; CM5
+       gives us a working playground without one. The aesthetic is
+       similar (line numbers, syntax highlighting, dark theme). -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a22;
+      --panel-2: #1c2230;
+      --border: #2a3140;
+      --text: #d6dbe3;
+      --muted: #8a93a3;
+      --accent: #5eead4;
+      --accent-2: #38bdf8;
+      --critical: #ef4444;
+      --high: #f97316;
+      --medium: #eab308;
+      --low: #38bdf8;
+      --info: #a78bfa;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      height: 100%;
+    }
+    body { display: flex; flex-direction: column; }
+    header {
+      padding: 12px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    header h1 {
+      margin: 0; font-size: 16px; font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    header h1 .accent { color: var(--accent); }
+    header .spacer { flex: 1; }
+    header .meta { color: var(--muted); font-size: 12px; }
+    button {
+      background: var(--accent);
+      color: #0b1115;
+      border: 0;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+    }
+    button:hover { background: #7ff3da; }
+    button:active { transform: translateY(1px); }
+    button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.ghost:hover { background: var(--panel-2); }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr auto;
+      grid-template-areas:
+        "idl rust"
+        "findings findings";
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+    .pane {
+      background: var(--panel);
+      display: flex; flex-direction: column;
+      min-height: 0;
+    }
+    .pane .pane-header {
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .pane.idl { grid-area: idl; }
+    .pane.rust { grid-area: rust; }
+    .pane .editor { flex: 1; min-height: 0; }
+    .CodeMirror {
+      height: 100% !important;
+      font-size: 13px;
+      font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    }
+    .findings {
+      grid-area: findings;
+      background: var(--panel);
+      max-height: 38vh;
+      display: flex; flex-direction: column;
+    }
+    .findings-header {
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .findings-header .spacer { flex: 1; }
+    .findings-header .counts { display: flex; gap: 6px; }
+    .findings-header .counts .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--panel-2);
+      color: var(--text);
+    }
+    .findings-list { overflow-y: auto; flex: 1; }
+    .finding {
+      display: grid;
+      grid-template-columns: 80px 200px 1fr;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+    .finding:last-child { border-bottom: 0; }
+    .finding .sev {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #0b1115;
+      text-align: center;
+    }
+    .finding .sev.critical { background: var(--critical); color: #fff; }
+    .finding .sev.high     { background: var(--high);     color: #fff; }
+    .finding .sev.medium   { background: var(--medium);   color: #0b1115; }
+    .finding .sev.low      { background: var(--low);      color: #0b1115; }
+    .finding .sev.info     { background: var(--info);     color: #0b1115; }
+    .finding .rule {
+      font-family: ui-monospace, "JetBrains Mono", monospace;
+      font-size: 12px;
+      color: var(--accent-2);
+    }
+    .finding .body .msg { margin: 0 0 4px; }
+    .finding .body .loc {
+      color: var(--muted);
+      font-family: ui-monospace, "JetBrains Mono", monospace;
+      font-size: 11px;
+    }
+    .finding .body .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+      font-style: italic;
+    }
+    .empty {
+      padding: 30px 14px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .error {
+      padding: 14px;
+      color: var(--critical);
+      background: #2a1414;
+      border-bottom: 1px solid var(--border);
+    }
+    footer {
+      padding: 6px 20px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+      display: flex; gap: 14px; align-items: center;
+    }
+    footer a { color: var(--accent-2); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "idl"
+          "rust"
+          "findings";
+        grid-template-rows: 1fr 1fr auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Anchor <span class="accent">Sentinel</span> — Playground</h1>
+    <span class="meta">paste an IDL and a Rust <code>lib.rs</code>, then scan</span>
+    <span class="spacer"></span>
+    <button id="scan-btn" type="button">Scan</button>
+    <button id="share-btn" class="ghost" type="button">Share</button>
+    <button id="reset-btn" class="ghost" type="button">Reset</button>
+  </header>
+  <main>
+    <section class="pane idl">
+      <div class="pane-header">IDL (JSON)</div>
+      <div id="idl-editor" class="editor"></div>
+    </section>
+    <section class="pane rust">
+      <div class="pane-header">Anchor source (lib.rs)</div>
+      <div id="rust-editor" class="editor"></div>
+    </section>
+    <section class="findings">
+      <div class="findings-header">
+        <span>Findings</span>
+        <span class="spacer"></span>
+        <span id="finding-counts" class="counts"></span>
+      </div>
+      <div id="findings-list" class="findings-list">
+        <div class="empty">Press <strong>Scan</strong> to run Anchor Sentinel.</div>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <span id="status">loading WASM module…</span>
+    <span class="spacer" style="flex:1"></span>
+    <a href="https://github.com/eniyanyosuva/anchor-sentinel" target="_blank" rel="noopener">github</a>
+  </footer>
+
+  <script>
+    // The pre-loaded example matches tests/fixtures/vault-vulnerable/ so
+    // the playground works on first open. Edit the panes, then hit Scan.
+    const DEFAULT_IDL = `{
+  "version": "0.30.0",
+  "name": "vault",
+  "instructions": [
+    {
+      "name": "deposit",
+      "accounts": [
+        { "name": "user",      "writable": true,  "signer": false },
+        { "name": "authority", "writable": false, "signer": false },
+        { "name": "vault",     "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "withdraw",
+      "accounts": [
+        { "name": "authority",   "writable": false, "signer": false },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": false, "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [9, 10, 11, 12, 13, 14, 15, 16]
+    }
+  ],
+  "accounts": [
+    { "name": "Vault", "discriminator": [100, 101, 102, 103, 104, 105, 106, 107] }
+  ],
+  "types": [
+    {
+      "name": "Vault",
+      "kind": "struct",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "total",     "type": "u64" }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": []
+}`;
+
+    const DEFAULT_RUST = `// Vulnerable vault — used to drive AST-based rule detection.
+//
+// All accounts are passed as \`AccountInfo\` (the unsafe escape hatch) and
+// the deposit/withdraw handlers use raw arithmetic without \`checked_*\`.
+// Sentinel should pick up both classes of bug.
+
+use anchor_lang::prelude::*;
+
+declare_id!("VauLT1111111111111111111111111111111111111");
+
+#[program]
+pub mod vault_vulnerable {
+    use super::*;
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let user = &ctx.accounts.user;
+        // BUG: unchecked addition.
+        let new_total = vault.lamports() + amount;
+        **vault.try_borrow_mut_lamports()? = new_total;
+        **user.try_borrow_mut_lamports()? -= amount;
+        Ok(())
+    }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let destination = &ctx.accounts.destination;
+        // BUG: unchecked subtraction (underflow panic possible).
+        let new_total = vault.lamports() - amount;
+        **vault.try_borrow_mut_lamports()? = new_total;
+        **destination.try_borrow_mut_lamports()? += amount;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Deposit<'info> {
+    /// BUG: should be \`Signer\` to authorize who is depositing.
+    #[account(mut)]
+    pub user: AccountInfo<'info>,
+
+    /// BUG: should be \`Signer\` for an authority check.
+    pub authority: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub vault: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    /// BUG: should be \`Signer\` for an authority check.
+    pub authority: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub vault: AccountInfo<'info>,
+
+    /// BUG: should be \`mut\` because lamports are added.
+    pub destination: AccountInfo<'info>,
+}
+
+#[account]
+pub struct Vault {
+    pub authority: Pubkey,
+    pub total: u64,
+}`;
+
+    // ── Editor setup ──────────────────────────────────────────────
+    let idlEditor, rustEditor, wasmModule;
+
+    function initEditors() {
+      // Restore from URL hash if present, otherwise use defaults.
+      let initialIdl = DEFAULT_IDL, initialRust = DEFAULT_RUST;
+      const hash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
+      if (hash) {
+        try {
+          const decoded = JSON.parse(atob(decodeURIComponent(hash)));
+          if (typeof decoded.idl === 'string') initialIdl = decoded.idl;
+          if (typeof decoded.rust === 'string') initialRust = decoded.rust;
+        } catch (e) {
+          // Bad hash — fall through to defaults.
+          console.warn('failed to decode share hash:', e);
+        }
+      }
+
+      idlEditor = CodeMirror(document.getElementById('idl-editor'), {
+        value: initialIdl,
+        mode: { name: 'javascript', json: true },
+        theme: 'material-darker',
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        indentUnit: 2,
+        tabSize: 2,
+      });
+      rustEditor = CodeMirror(document.getElementById('rust-editor'), {
+        value: initialRust,
+        mode: 'rust',
+        theme: 'material-darker',
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        indentUnit: 4,
+        tabSize: 4,
+      });
+    }
+
+    // ── WASM loading ──────────────────────────────────────────────
+    async function loadWasm() {
+      // wasm-pack --target web emits `./pkg/anchor_sentinel.js` that
+      // default-exports an init function. The glue picks up the .wasm
+      // file via fetch at runtime.
+      try {
+        const mod = await import('./pkg/anchor_sentinel.js');
+        await mod.default();
+        wasmModule = mod;
+        document.getElementById('status').textContent =
+          'WASM module ready — press Scan to analyze';
+      } catch (e) {
+        document.getElementById('status').textContent =
+          'failed to load WASM module: ' + e;
+        document.getElementById('scan-btn').disabled = true;
+        console.error(e);
+      }
+    }
+
+    // ── Findings rendering ───────────────────────────────────────
+    function severityClass(s) {
+      return 'sev ' + (s || 'info');
+    }
+    function renderFindings(findings) {
+      const list = document.getElementById('findings-list');
+      const counts = document.getElementById('finding-counts');
+      list.innerHTML = '';
+      counts.innerHTML = '';
+
+      if (!Array.isArray(findings) || findings.length === 0) {
+        list.innerHTML = '<div class="empty">No findings. ✓</div>';
+        return;
+      }
+      if (findings[0] && findings[0].error) {
+        list.innerHTML = '<div class="error">' + escapeHtml(findings[0].error) + '</div>';
+        return;
+      }
+
+      // Sort by severity (critical → info) then by file:line.
+      const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+      findings.sort((a, b) => {
+        const s = (order[a.severity] ?? 9) - (order[b.severity] ?? 9);
+        if (s !== 0) return s;
+        const af = (a.file || '') + ':' + (a.line || '');
+        const bf = (b.file || '') + ':' + (b.line || '');
+        return af.localeCompare(bf);
+      });
+
+      // Severity summary pills.
+      const bySev = {};
+      for (const f of findings) bySev[f.severity] = (bySev[f.severity] || 0) + 1;
+      for (const sev of ['critical', 'high', 'medium', 'low', 'info']) {
+        if (!bySev[sev]) continue;
+        const pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.textContent = bySev[sev] + ' ' + sev;
+        pill.style.color = 'var(--' + sev + ')';
+        counts.appendChild(pill);
+      }
+
+      for (const f of findings) {
+        const row = document.createElement('div');
+        row.className = 'finding';
+
+        const sev = document.createElement('div');
+        sev.className = severityClass(f.severity);
+        sev.textContent = f.severity;
+
+        const rule = document.createElement('div');
+        rule.className = 'rule';
+        rule.textContent = f.rule;
+        if (f.account) rule.textContent += '\n  acct: ' + f.account;
+        if (f.instruction) rule.textContent += '\n  inst: ' + f.instruction;
+
+        const body = document.createElement('div');
+        body.className = 'body';
+        const msg = document.createElement('p');
+        msg.className = 'msg';
+        msg.textContent = f.message;
+        body.appendChild(msg);
+        if (f.file && f.line) {
+          const loc = document.createElement('div');
+          loc.className = 'loc';
+          loc.textContent = f.file + ':' + f.line + ':' + (f.column || '');
+          body.appendChild(loc);
+        }
+        if (f.hint) {
+          const hint = document.createElement('div');
+          hint.className = 'hint';
+          hint.textContent = 'hint: ' + f.hint;
+          body.appendChild(hint);
+        }
+
+        row.appendChild(sev);
+        row.appendChild(rule);
+        row.appendChild(body);
+        list.appendChild(row);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ── Buttons ───────────────────────────────────────────────────
+    function runScan() {
+      if (!wasmModule) {
+        document.getElementById('status').textContent = 'WASM module not loaded yet';
+        return;
+      }
+      const idl = idlEditor.getValue();
+      const rust = rustEditor.getValue();
+      document.getElementById('status').textContent = 'scanning…';
+      // Defer to the next frame so the status text actually paints.
+      requestAnimationFrame(() => {
+        try {
+          const t0 = performance.now();
+          const findings = wasmModule.scan(idl, rust);
+          const elapsed = (performance.now() - t0).toFixed(1);
+          renderFindings(findings);
+          const count = Array.isArray(findings) ? findings.length : 0;
+          document.getElementById('status').textContent =
+            count + ' finding' + (count === 1 ? '' : 's') + ' in ' + elapsed + 'ms';
+        } catch (e) {
+          document.getElementById('status').textContent = 'scan failed: ' + e;
+          console.error(e);
+        }
+      });
+    }
+
+    function share() {
+      const payload = {
+        idl: idlEditor.getValue(),
+        rust: rustEditor.getValue(),
+      };
+      const encoded = encodeURIComponent(btoa(JSON.stringify(payload)));
+      history.replaceState(null, '', '#' + encoded);
+      // Show a brief confirmation in the status bar.
+      const status = document.getElementById('status');
+      const prev = status.textContent;
+      status.textContent = 'share link copied to URL hash';
+      setTimeout(() => { status.textContent = prev; }, 1500);
+    }
+
+    function reset() {
+      idlEditor.setValue(DEFAULT_IDL);
+      rustEditor.setValue(DEFAULT_RUST);
+      history.replaceState(null, '', location.pathname);
+      document.getElementById('findings-list').innerHTML =
+        '<div class="empty">Press <strong>Scan</strong> to run Anchor Sentinel.</div>';
+      document.getElementById('finding-counts').innerHTML = '';
+      document.getElementById('status').textContent =
+        'reset to default example — press Scan to analyze';
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────
+    // CodeMirror loads scripts with `defer`, so we can poll for globals.
+    function bootWhenReady() {
+      if (typeof CodeMirror === 'undefined') {
+        return setTimeout(bootWhenReady, 30);
+      }
+      initEditors();
+      document.getElementById('scan-btn').addEventListener('click', runScan);
+      document.getElementById('share-btn').addEventListener('click', share);
+      document.getElementById('reset-btn').addEventListener('click', reset);
+      // Ctrl/Cmd-Enter to scan.
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          runScan();
+        }
+      });
+      loadWasm();
+    }
+    bootWhenReady();
+  </script>
+</body>
+</html>
