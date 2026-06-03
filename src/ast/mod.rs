@@ -26,6 +26,46 @@ pub fn collect_hints(paths: &[std::path::PathBuf]) -> Result<Vec<AstHint>> {
     Ok(out)
 }
 
+/// Parse a single Rust source string and return the AST hints it
+/// produces. The `file` label is stamped onto each hint so the report
+/// can show `file:line:column`. Used by the WASM entrypoint, which has
+/// no filesystem to walk.
+///
+/// The `#[allow(dead_code)]` is for the native build: the function is
+/// only called from the `wasm32` target, but the symbol is part of
+/// the rlib so we don't want clippy to fail CI on it.
+#[allow(dead_code)]
+pub fn collect_hints_from_source(file: &str, src: &str) -> Result<Vec<AstHint>> {
+    let ast = syn::parse_file(src).map_err(|e| anyhow::anyhow!("parsing Rust source: {e}"))?;
+
+    let mut accounts = accounts_struct::FileAccounts::default();
+    let mut fns = instruction_fn::FileFns::default();
+    let mut av = accounts_struct::AccountsStructVisitor::new(file, &mut accounts);
+    let mut fv = instruction_fn::InstructionFnVisitor::new(file, &mut fns);
+
+    av.visit_file(&ast);
+    fv.visit_file(&ast);
+
+    let mut hints: Vec<AstHint> = Vec::new();
+    for raw in accounts.hints {
+        hints.push(AstHint {
+            kind: raw.kind,
+            file: file.to_string(),
+            line: raw.start.line,
+            column: raw.start.column,
+        });
+    }
+    for raw in fns.hints {
+        hints.push(AstHint {
+            kind: raw.kind,
+            file: file.to_string(),
+            line: raw.start.line,
+            column: raw.start.column,
+        });
+    }
+    Ok(hints)
+}
+
 fn parse_file(path: &Path) -> Option<Vec<AstHint>> {
     let _src = std::fs::read_to_string(path).ok()?;
     let ast = syn::parse_file(&_src).ok()?;

@@ -105,3 +105,32 @@ jobs:
             echo "::error::One or more fixtures produced unexpected results"
             exit 1
           fi
+
+  wasm:
+    name: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer.sh | sh
+
+      - name: Build WASM module
+        run: wasm-pack build --target web --out-dir playground/pkg
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-wasm
+          path: playground/pkg
+          retention-days: 14

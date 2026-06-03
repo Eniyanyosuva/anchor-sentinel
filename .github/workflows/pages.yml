@@ -1,0 +1,61 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow only one concurrent deployment, queueing newer runs and
+# dropping older ones. Concurrency settings also affect canceled
+# workflows — `cancel-in-progress: false` keeps a running deploy alive.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+# Pages deployments need read on the repo (for checkout + GH Pages
+# branch creation) and write on the GH Pages environment (for the
+# peaceiris action). The default `GITHUB_TOKEN` has both when the
+# repo's Pages settings allow Actions deployments.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    name: build-wasm + deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer.sh | sh
+
+      - name: Build WASM module into playground/pkg/
+        run: wasm-pack build --target web --out-dir playground/pkg
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
