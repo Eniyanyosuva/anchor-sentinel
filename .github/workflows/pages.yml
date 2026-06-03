@@ -43,7 +43,9 @@ jobs:
           cache-on-failure: true
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer.sh | sh
+        # Install via cargo (slow but reliable — the curl|sh installer
+        # hits a dash-vs-bash issue on the GitHub-hosted runners).
+        run: cargo install wasm-pack --locked
 
       - name: Build WASM module into playground/pkg/
         run: wasm-pack build --target web --out-dir playground/pkg
