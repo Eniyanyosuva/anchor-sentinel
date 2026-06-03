@@ -12,6 +12,7 @@ pub mod integer_cast_truncation;
 pub mod lamports_drain;
 pub mod missing_balance_check;
 pub mod missing_bump_seed_canonicalization;
+pub mod missing_close_authority;
 pub mod missing_mut;
 pub mod missing_ownership;
 pub mod missing_signer;
@@ -54,6 +55,9 @@ inventory::submit! {
 }
 inventory::submit! {
     RuleFactory { build: || Arc::new(integer_cast_truncation::IntegerCastTruncation) as Arc<dyn Rule> }
+}
+inventory::submit! {
+    RuleFactory { build: || Arc::new(missing_close_authority::MissingCloseAuthority) as Arc<dyn Rule> }
 }
 
 /// Rule metadata without instantiation — used by SARIF output and

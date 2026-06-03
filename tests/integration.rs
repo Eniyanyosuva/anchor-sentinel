@@ -128,7 +128,8 @@ fn rules_subcommand_lists_all_rules() {
             "missing_bump_seed_canonicalization",
         ))
         .stdout(predicate::str::contains("duplicate_mutable_accounts"))
-        .stdout(predicate::str::contains("integer_cast_truncation"));
+        .stdout(predicate::str::contains("integer_cast_truncation"))
+        .stdout(predicate::str::contains("missing_close_authority"));
 }
 
 #[test]
@@ -184,6 +185,71 @@ fn clean_vault_has_no_integer_cast_truncation() {
     assert!(
         !has,
         "expected no integer_cast_truncation findings on clean vault, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn close_vulnerable_triggers_missing_close_authority() {
+    // The close-vulnerable fixture has three handlers whose `close = receiver`
+    // constraint hands the rent to a plain `AccountInfo` receiver with no
+    // signer, has_one, or constraint binding. Each should produce one
+    // `missing_close_authority` finding pointing at the `vault` field.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/close-vulnerable");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let close_findings: Vec<_> = arr
+        .iter()
+        .filter(|f| f["rule"] == "missing_close_authority")
+        .collect();
+    assert_eq!(
+        close_findings.len(),
+        3,
+        "expected 3 missing_close_authority findings, got {}: {}",
+        close_findings.len(),
+        serde_json::to_string_pretty(&close_findings).unwrap()
+    );
+    // Each finding must point at the `vault` field (the one with `close = …`).
+    for f in &close_findings {
+        assert_eq!(f["account"], "vault", "expected account=vault, got: {f}");
+        assert!(
+            f["message"]
+                .as_str()
+                .unwrap()
+                .contains("close target `receiver`"),
+            "expected message to mention `receiver`, got: {}",
+            f["message"]
+        );
+    }
+}
+
+#[test]
+fn close_clean_has_no_missing_close_authority() {
+    // The close-clean fixture exercises three safe bindings:
+    //   1. close target is a `Signer<'info>`
+    //   2. close target is bound via `has_one = authority`
+    //   3. close target appears in a `constraint = …authority…` expression
+    // None of these should trigger `missing_close_authority`.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/close-clean");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let has = arr.iter().any(|f| f["rule"] == "missing_close_authority");
+    assert!(
+        !has,
+        "expected no missing_close_authority findings on close-clean, got:\n{stdout}"
     );
 }
 

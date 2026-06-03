@@ -344,6 +344,16 @@ expression: stripped
               }
             },
             {
+              "id": "missing_close_authority",
+              "name": "missing_close_authority",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "Detects `close = <target>` constraints where the target is not enforced as a signer or authority"
+              }
+            },
+            {
               "id": "missing_mut",
               "name": "missing_mut",
               "properties": {
