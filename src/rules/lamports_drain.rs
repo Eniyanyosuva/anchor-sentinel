@@ -30,8 +30,7 @@ impl Rule for LamportsDrain {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         // Collect zeros and auth checks grouped by (file, fn_name).
-        let mut zeros: HashMap<(String, String), Vec<(String, usize, &AstHint)>> =
-            HashMap::new();
+        let mut zeros: HashMap<(String, String), Vec<(String, usize, &AstHint)>> = HashMap::new();
         let mut auth_checks: HashMap<(String, String), Vec<usize>> = HashMap::new();
 
         let mut current_fn: Option<(String, String)> = None;
@@ -55,10 +54,7 @@ impl Rule for LamportsDrain {
                 AstHintKind::BalanceCheck {
                     check_type, seq, ..
                 } if is_auth_check(check_type) => {
-                    auth_checks
-                        .entry(key)
-                        .or_default()
-                        .push(*seq);
+                    auth_checks.entry(key).or_default().push(*seq);
                 }
                 _ => {}
             }
@@ -72,9 +68,11 @@ impl Rule for LamportsDrain {
                 .unwrap_or(&[]);
 
             // Also check IDL: does this instruction have any signer?
-            let has_idl_signer = ctx.ir.instructions.iter().any(|ix| {
-                ix.name == *fn_name && ix.accounts.iter().any(|a| a.is_signer)
-            });
+            let has_idl_signer = ctx
+                .ir
+                .instructions
+                .iter()
+                .any(|ix| ix.name == *fn_name && ix.accounts.iter().any(|a| a.is_signer));
 
             for (account, zero_seq, zero_hint) in entries {
                 let has_auth = auth_seqs.iter().any(|s| *s < *zero_seq);
@@ -104,8 +102,7 @@ impl Rule for LamportsDrain {
         // Sort findings deterministically by (instruction, account, line) so
         // snapshots are stable across runs (HashMap iteration is non-deterministic).
         out.sort_by(|a, b| {
-            (&a.instruction, &a.account, a.line)
-                .cmp(&(&b.instruction, &b.account, b.line))
+            (&a.instruction, &a.account, a.line).cmp(&(&b.instruction, &b.account, b.line))
         });
 
         Ok(out)
@@ -115,6 +112,11 @@ impl Rule for LamportsDrain {
 fn is_auth_check(check_type: &str) -> bool {
     matches!(
         check_type,
-        "require_keys_eq" | "require_keys_neq" | "require" | "require_gte" | "require_eq" | "require_gt"
+        "require_keys_eq"
+            | "require_keys_neq"
+            | "require"
+            | "require_gte"
+            | "require_eq"
+            | "require_gt"
     )
 }

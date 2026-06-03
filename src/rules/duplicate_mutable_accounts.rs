@@ -40,10 +40,7 @@ impl Rule for DuplicateMutableAccounts {
         let mut ast_account_info: HashSet<String> = HashSet::new();
         let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
-            if let AstHintKind::AccountsField {
-                field_name, ty, ..
-            } = &hint.kind
-            {
+            if let AstHintKind::AccountsField { field_name, ty, .. } = &hint.kind {
                 if ty.contains("Account<")
                     || ty.contains("SystemAccount")
                     || ty.contains("Program<")
@@ -83,8 +80,7 @@ impl Rule for DuplicateMutableAccounts {
                 .collect();
 
             if unsafe_accounts.len() >= 2 {
-                let names: Vec<&str> =
-                    unsafe_accounts.iter().map(|a| a.name.as_str()).collect();
+                let names: Vec<&str> = unsafe_accounts.iter().map(|a| a.name.as_str()).collect();
                 let mut b = Finding::builder(
                     self.id(),
                     self.severity(),

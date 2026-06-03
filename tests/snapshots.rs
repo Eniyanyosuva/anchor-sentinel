@@ -130,7 +130,8 @@ fn strip_sarif_paths(mut v: serde_json::Value) -> serde_json::Value {
         for run in runs {
             if let Some(results) = run.get_mut("results").and_then(|r| r.as_array_mut()) {
                 for result in results {
-                    if let Some(locations) = result.get_mut("locations").and_then(|l| l.as_array_mut())
+                    if let Some(locations) =
+                        result.get_mut("locations").and_then(|l| l.as_array_mut())
                     {
                         for loc in locations {
                             if let Some(uri) = loc

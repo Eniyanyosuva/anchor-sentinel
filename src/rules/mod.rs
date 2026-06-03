@@ -4,19 +4,19 @@
 
 use std::sync::Arc;
 
-use crate::engine::{registry::RuleFactory, Rule};
 use crate::engine::Severity;
+use crate::engine::{registry::RuleFactory, Rule};
 
+pub mod duplicate_mutable_accounts;
+pub mod lamports_drain;
+pub mod missing_balance_check;
+pub mod missing_bump_seed_canonicalization;
 pub mod missing_mut;
 pub mod missing_ownership;
 pub mod missing_signer;
 pub mod pda_misconfig;
-pub mod unsafe_arithmetic;
-pub mod missing_balance_check;
-pub mod missing_bump_seed_canonicalization;
-pub mod duplicate_mutable_accounts;
-pub mod lamports_drain;
 pub mod unchecked_balance_flow;
+pub mod unsafe_arithmetic;
 
 // `inventory` requires the submission to be reachable from a `static` of the
 // crate. Putting them in a `#[distributed_slice]`-style static list keeps the

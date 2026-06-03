@@ -52,20 +52,19 @@ impl Rule for MissingBalanceCheck {
                     amount_expr,
                     seq,
                 } => {
-                    debits
-                        .entry(key)
-                        .or_default()
-                        .push((account.clone(), amount_expr.clone(), *seq, hint));
+                    debits.entry(key).or_default().push((
+                        account.clone(),
+                        amount_expr.clone(),
+                        *seq,
+                        hint,
+                    ));
                 }
                 AstHintKind::BalanceCheck {
                     account,
                     check_type: _,
                     seq,
                 } => {
-                    checks
-                        .entry(key)
-                        .or_default()
-                        .push((account.clone(), *seq));
+                    checks.entry(key).or_default().push((account.clone(), *seq));
                 }
                 _ => {}
             }
@@ -82,8 +81,7 @@ impl Rule for MissingBalanceCheck {
                 // Check if any balance check precedes this debit for the same
                 // account, or a generic check (empty account name) exists before it.
                 let has_guard = fn_checks.iter().any(|(check_acct, check_seq)| {
-                    *check_seq < *debit_seq
-                        && (check_acct == account || check_acct.is_empty())
+                    *check_seq < *debit_seq && (check_acct == account || check_acct.is_empty())
                 });
 
                 if !has_guard {
@@ -113,8 +111,7 @@ impl Rule for MissingBalanceCheck {
         // Sort deterministically so snapshots are stable (HashMap iteration
         // is non-deterministic).
         out.sort_by(|a, b| {
-            (&a.instruction, &a.account, a.line)
-                .cmp(&(&b.instruction, &b.account, b.line))
+            (&a.instruction, &a.account, a.line).cmp(&(&b.instruction, &b.account, b.line))
         });
 
         Ok(out)

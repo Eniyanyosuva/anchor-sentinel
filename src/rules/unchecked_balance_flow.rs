@@ -54,25 +54,19 @@ impl Rule for UncheckedBalanceFlow {
                     amount_expr,
                     seq,
                 } => {
-                    credits
-                        .entry(fn_name.clone())
-                        .or_default()
-                        .push((account.clone(), amount_expr.clone(), *seq));
+                    credits.entry(fn_name.clone()).or_default().push((
+                        account.clone(),
+                        amount_expr.clone(),
+                        *seq,
+                    ));
                 }
-                AstHintKind::LamportsDebit {
-                    account,
-                    seq,
-                    ..
-                } => {
+                AstHintKind::LamportsDebit { account, seq, .. } => {
                     debits
                         .entry(fn_name.clone())
                         .or_default()
                         .push((account.clone(), *seq));
                 }
-                AstHintKind::CpiTransfer {
-                    target,
-                    seq,
-                } => {
+                AstHintKind::CpiTransfer { target, seq } => {
                     cpi_ops
                         .entry(fn_name.clone())
                         .or_default()
@@ -111,17 +105,17 @@ impl Rule for UncheckedBalanceFlow {
                     } = &h.kind
                     {
                         (check_type.contains("rent") || check_type.contains("min"))
-                            || writable_non_signers
-                                .iter()
-                                .any(|a| a.name == *account)
+                            || writable_non_signers.iter().any(|a| a.name == *account)
                     } else {
                         false
                     }
                 });
 
                 if !has_rent_check {
-                    let account_names: Vec<&str> =
-                        writable_non_signers.iter().map(|a| a.name.as_str()).collect();
+                    let account_names: Vec<&str> = writable_non_signers
+                        .iter()
+                        .map(|a| a.name.as_str())
+                        .collect();
                     out.push(
                         Finding::builder(
                             self.id(),
@@ -146,8 +140,10 @@ impl Rule for UncheckedBalanceFlow {
             } else if ix_debits > 0 && ix_credits == 0 && ix_cpi > 0 {
                 // Debits present with CPI but no explicit credit — flag for manual review.
                 let targets = cpi_ops.get(&ix.name).unwrap();
-                let account_names: Vec<&str> =
-                    writable_non_signers.iter().map(|a| a.name.as_str()).collect();
+                let account_names: Vec<&str> = writable_non_signers
+                    .iter()
+                    .map(|a| a.name.as_str())
+                    .collect();
                 out.push(
                     Finding::builder(
                         self.id(),
@@ -183,8 +179,10 @@ impl Rule for UncheckedBalanceFlow {
                                 .join(", ")
                         })
                         .unwrap_or_default();
-                    let account_names: Vec<&str> =
-                        writable_non_signers.iter().map(|a| a.name.as_str()).collect();
+                    let account_names: Vec<&str> = writable_non_signers
+                        .iter()
+                        .map(|a| a.name.as_str())
+                        .collect();
                     out.push(
                         Finding::builder(
                             self.id(),

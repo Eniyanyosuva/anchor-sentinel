@@ -96,7 +96,10 @@ fn extract_bump_expression(constraint: &str) -> Option<&str> {
     }
     // `bump = <expr>` — extract the expression.
     let eq_idx = after.find('=')?;
-    let expr = after[eq_idx + 1..].trim_start().trim_end_matches(',').trim();
+    let expr = after[eq_idx + 1..]
+        .trim_start()
+        .trim_end_matches(',')
+        .trim();
     if expr.is_empty() {
         return None;
     }

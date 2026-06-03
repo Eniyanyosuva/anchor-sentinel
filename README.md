@@ -40,7 +40,9 @@ Anchor Sentinel is that scanner. Local, fast, open-source, JSON-friendly.
 - [x] JSON snapshot tests (`insta`) for the report shape
 - [ ] Public-fixture vendoring (SPL / anchor examples) — script ready, network-gated
 - [x] Source `file:line:column` resolution from `proc_macro2::Span`.
-- [x] GitHub Actions CI workflow
+- [x] SARIF 2.1.0 output (`--format sarif`) for GitHub Code Scanning.
+- [x] GitHub Action (`.github/actions/scan`) — one-line CI integration.
+- [x] Published to crates.io (`cargo install anchor-sentinel`).
 
 ## Install
 
@@ -75,16 +77,31 @@ sentinel scan . --min-severity high
 
 # List all registered rules
 sentinel rules
-
-# Skip a rule
-sentinel scan . --ignore missing_mut
-
-# Only show high/critical
-sentinel scan . --min-severity high
-
-# List all registered rules
-sentinel rules
 ```
+
+## GitHub Action
+
+Add security scanning to your CI in one line. Create `.github/workflows/security.yml`:
+
+```yaml
+name: Security Scan
+on: [push, pull_request]
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Anchor project
+        run: anchor build
+      - uses: Eniyanyosuva/anchor-sentinel/.github/actions/scan@main
+        with:
+          fail-on-severity: high
+```
+
+Findings appear inline on PR diffs and in the GitHub Security tab via SARIF.
 
 ### Exit codes
 

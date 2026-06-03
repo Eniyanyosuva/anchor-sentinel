@@ -265,15 +265,9 @@ pub enum AstHintKind {
         seq: usize,
     },
     /// Lamports explicitly zeroed (`lamports = 0`, `set_lamports(0)`).
-    LamportsZero {
-        account: String,
-        seq: usize,
-    },
+    LamportsZero { account: String, seq: usize },
     /// CPI that may transfer lamports (`invoke` / `invoke_signed`).
-    CpiTransfer {
-        target: String,
-        seq: usize,
-    },
+    CpiTransfer { target: String, seq: usize },
 }
 
 /// The interface every rule implements.

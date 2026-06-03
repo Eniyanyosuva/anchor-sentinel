@@ -124,7 +124,9 @@ fn rules_subcommand_lists_all_rules() {
         .stdout(predicate::str::contains("missing_balance_check"))
         .stdout(predicate::str::contains("lamports_drain"))
         .stdout(predicate::str::contains("unchecked_balance_flow"))
-        .stdout(predicate::str::contains("missing_bump_seed_canonicalization"))
+        .stdout(predicate::str::contains(
+            "missing_bump_seed_canonicalization",
+        ))
         .stdout(predicate::str::contains("duplicate_mutable_accounts"));
 }
 
@@ -219,7 +221,13 @@ fn clean_vault_no_balance_findings() {
         .filter(|f| {
             matches!(
                 f["rule"].as_str(),
-                Some("missing_balance_check" | "lamports_drain" | "unchecked_balance_flow" | "missing_bump_seed_canonicalization" | "duplicate_mutable_accounts")
+                Some(
+                    "missing_balance_check"
+                        | "lamports_drain"
+                        | "unchecked_balance_flow"
+                        | "missing_bump_seed_canonicalization"
+                        | "duplicate_mutable_accounts"
+                )
             )
         })
         .count();
