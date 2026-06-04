@@ -292,7 +292,7 @@ pub fn print_summary_footer(findings: &[Finding], elapsed: Duration) {
             println!("{}", row);
             continue;
         }
-        let pct = if total == 0 { 0 } else { n * 100 / total };
+        let pct = n.checked_mul(100).and_then(|x| x.checked_div(total)).unwrap_or(0);
         let row_label = format!(" {:<8} {:>2}  ", label, n);
         let bar = render_bar(n, total, true);
         let row = format!("{}{}  ({}%)", row_label, bar, pct);
@@ -352,7 +352,7 @@ fn print_animated_bar(
     const WIDTH: usize = 30;
     let mut line = String::new();
     line.push_str(label);
-    let pct = if total == 0 { 0 } else { n * 100 / total };
+    let pct = n.checked_mul(100).and_then(|x| x.checked_div(total)).unwrap_or(0);
     for i in 0..=WIDTH {
         let filled = (n * i) / WIDTH.max(1);
         let empty = WIDTH - filled;
