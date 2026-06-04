@@ -55,6 +55,8 @@ jobs:
           set -euo pipefail
           echo "::group::source tree before deploy"
           ls -la ./playground
+          echo "--- find ./playground ---"
+          find ./playground -type f | head -30
           echo "::endgroup::"
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
