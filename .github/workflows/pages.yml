@@ -44,24 +44,32 @@ jobs:
         run: wasm-pack build --target web --out-dir playground/pkg
 
       - name: Deploy playground/ to the gh-pages branch
-        uses: peaceiris/actions-gh-pages@v3
-        # peaceiris picks up `GITHUB_TOKEN` automatically when the
-        # workflow has `contents: write` (which we set above), but the
-        # action's auth check still wants to see an explicit token in
-        # some runners. Setting `github_token: ${{ secrets.GITHUB_TOKEN }}`
-        # makes the lookup unambiguous.
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # The directory that becomes the published site root.
-          # We deploy `playground/` itself so `playground/index.html` is
-          # the site's index page. The `pkg/` subdirectory is included
-          # in the same publish, so the WASM module is reachable at
-          # `/pkg/anchor_sentinel.js` from the page.
-          publish_dir: ./playground
-          # Don't keep history; this branch is rebuilt from scratch
-          # on every push to main.
-          force_orphan: true
-          # Keep the existing branch clean while we push.
-          commit_message: "deploy: anchor-sentinel playground (commit ${{ github.sha }})"
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
+        # Skip peaceiris/actions-gh-pages@v3 — its `cp -RfL` glob
+        # silently dropped the `playground/pkg/` directory in our
+        # setup, leaving the deployed page unable to find its WASM
+        # module. A direct `git push` to gh-pages is more reliable
+        # and easier to reason about.
+        run: |
+          set -euo pipefail
+          TMPDIR=$(mktemp -d)
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git clone --depth=1 --branch=gh-pages \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "$TMPDIR"
+          # Wipe the old gh-pages tree, then copy the fresh build in.
+          # We `rm -rf` and re-`cp` rather than relying on `cp` to
+          # overwrite in place — that ensures deleted files in the new
+          # build (e.g. a renamed rule's snapshot) actually go away.
+          rm -rf "$TMPDIR"/*
+          cp -R ./playground/. "$TMPDIR"/
+          cd "$TMPDIR"
+          git add --all
+          # `git add --all` respects .gitignore. The build output goes
+          # to `playground/pkg/`, which is not in our .gitignore, but
+          # we `git add --force` the directory just in case a future
+          # .gitignore change ever picks it up. `--force` is a no-op
+          # if the file is already staged, so this is safe.
+          git add --force --all playground/pkg || true
+          git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
+          git push origin gh-pages --force
