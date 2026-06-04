@@ -31,6 +31,10 @@ thiserror = "1.0"
 walkdir = "2.5"
 colored = "2.1"
 inventory = "0.3"
+
+# `ctrlc` doesn't compile for wasm32 (no signals there). We only
+# need Ctrl+C handling for the native CLI binary.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ctrlc = "3"
 is-terminal = "0.4"
 
