@@ -11,10 +11,7 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# The peaceiris action pushes directly to the `gh-pages` branch, so
-# we need write access to the repo. `contents: write` is enough —
-# we don't need the `pages:` permission that the official
-# actions/deploy-pages action requires.
+# Direct git push to gh-pages — `contents: write` is enough.
 permissions:
   contents: write
 
@@ -44,48 +41,45 @@ jobs:
         run: wasm-pack build --target web --out-dir playground/pkg
 
       - name: Deploy playground/ to the gh-pages branch
-        # Skip peaceiris/actions-gh-pages@v3 — its `cp -RfL` glob
-        # silently dropped the `playground/pkg/` directory in our
-        # setup, leaving the deployed page unable to find its WASM
-        # module. A direct `git push` to gh-pages is more reliable
-        # and easier to reason about.
+        # We tried three different copy mechanisms before this one:
+        #
+        # 1. peaceiris/actions-gh-pages@v3 — its `cp -RfL` glob
+        #    silently dropped `playground/pkg/` from the deployed
+        #    tree.
+        # 2. A `git clone + cp -R + commit + push` shell script —
+        #    `cp -R` of `playground/.` into the tempdir only copied
+        #    `pkg/.gitignore` and dropped all the regular files
+        #    (`*.js`, `*.wasm`, `*.d.ts`, even `index.html` and
+        #    `README.md`). Root cause is unclear — likely a `cp -R`
+        #    edge case on the GitHub-hosted Ubuntu runner with
+        #    trailing-slash source paths and the `pkg/` parent dir
+        #    already existing.
+        # 3. The fix below: use `rsync -a --delete`. `rsync` is far
+        #    more reliable than `cp -R` for the `src/. dst/`
+        #    pattern; it handles dotfiles, permissions, and nested
+        #    directory contents uniformly. `--delete` ensures the
+        #    deployed tree matches the source exactly (no leftover
+        #    files from a previous deploy).
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          echo "::group::source tree before deploy"
-          ls -la ./playground
-          echo "--- find ./playground ---"
-          find ./playground -type f | head -30
-          echo "::endgroup::"
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git clone --depth=1 --branch=gh-pages \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "$TMPDIR"
-          # Wipe the old gh-pages tree, then copy the fresh build in.
-          # `rm -rf` + `cp -R` (rather than `cp -u` or `rsync`) makes
-          # sure deleted files in the new build actually disappear
-          # (e.g. a renamed rule's snapshot).
-          find "$TMPDIR" -mindepth 1 -maxdepth 1 -not -path "$TMPDIR/.git*" -exec rm -rf {} +
-          cp -R ./playground/. "$TMPDIR"/
-          echo "::group::tempdir after copy"
-          ls -la "$TMPDIR"
-          echo "--- find $TMPDIR -type f ---"
-          find "$TMPDIR" -type f | head -30
-          echo "::endgroup::"
+          # Copy the source playground/ into the cloned gh-pages tree.
+          # Exclude `.git/` so we don't double-track the cloned repo's
+          # own git dir. The trailing `/` on the source is critical:
+          # it means "copy the contents of playground/", not
+          # "create playground/ inside the dest".
+          rsync -a --delete --exclude '.git' ./playground/ "$TMPDIR"/
           cd "$TMPDIR"
-          # Stage everything we just copied. `git add --all` respects
-          # .gitignore, but `playground/pkg/` isn't in our ignore list
-          # (and the build produces real .wasm/.js files that must
-          # land in the deployed tree).
           git add --all
-          echo "::group::git status"
-          git status --short
-          echo "::endgroup::"
-          # `git diff --cached --quiet` exits 0 when there's nothing
-          # to commit. Allow that as a no-op so re-running the
-          # workflow on the same commit doesn't fail.
-          git diff --cached --quiet || git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
+          # Allow no-op commits (e.g. re-running the workflow on the
+          # same SHA doesn't error out).
+          git diff --cached --quiet || \
+            git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
           git push origin gh-pages --force
