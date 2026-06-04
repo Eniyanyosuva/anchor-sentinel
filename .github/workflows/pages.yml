@@ -53,6 +53,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          echo "::group::source tree before deploy"
+          ls -la ./playground
+          echo "::endgroup::"
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
@@ -63,14 +66,20 @@ jobs:
           # `rm -rf` + `cp -R` (rather than `cp -u` or `rsync`) makes
           # sure deleted files in the new build actually disappear
           # (e.g. a renamed rule's snapshot).
-          rm -rf "$TMPDIR"/*
+          find "$TMPDIR" -mindepth 1 -maxdepth 1 -not -path "$TMPDIR/.git*" -exec rm -rf {} +
           cp -R ./playground/. "$TMPDIR"/
+          echo "::group::tempdir after copy"
+          ls -la "$TMPDIR"
+          echo "::endgroup::"
           cd "$TMPDIR"
           # Stage everything we just copied. `git add --all` respects
           # .gitignore, but `playground/pkg/` isn't in our ignore list
           # (and the build produces real .wasm/.js files that must
           # land in the deployed tree).
           git add --all
+          echo "::group::git status"
+          git status --short
+          echo "::endgroup::"
           # `git diff --cached --quiet` exits 0 when there's nothing
           # to commit. Allow that as a no-op so re-running the
           # workflow on the same commit doesn't fail.
