@@ -94,15 +94,13 @@ fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
     let width = width_override.unwrap_or(BOX_WIDTH);
     // Top border: `╭──…── <SEVERITY> ──╮` with the severity badge
     // hugging the right edge. Rounded corners give a softer feel.
+    // The border chars (─, ╭, ╮, ╰, ╯, │) are all colored per
+    // severity so the box's outline communicates the finding's
+    // urgency at a glance.
     let sev_label = format!(" {} ", f.severity.as_str().to_uppercase());
     let pad = width.saturating_sub(2 + sev_label.chars().count() + 1);
-    let top = format!(
-        "╭{}{}{}╮",
-        "─".repeat(pad),
-        severity_color(f.severity, &sev_label),
-        "─"
-    );
-    let bottom = format!("╰{}╯", "─".repeat(width - 2));
+    let (top, bottom, side) = severity_border(f.severity, width, pad, &sev_label);
+    // Body rows: pad the label column to 7 so the values line up.
 
     // Body rows: pad the label column to 7 so the values line up.
     let label_w = 7usize;
@@ -113,19 +111,23 @@ fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
     // (instruction) parenthetical. This is the headline of the box.
     if let Some(ix) = &f.instruction {
         body.push(format!(
-            "│ {}  {} {}",
+            "{side} {}  {} {}",
             "▸".dimmed(),
             rule_name_color(&f.rule),
             dim_label(&format!("({ix})"))
         ));
     } else {
-        body.push(format!("│ {}  {}", "▸".dimmed(), rule_name_color(&f.rule)));
+        body.push(format!(
+            "{side} {}  {}",
+            "▸".dimmed(),
+            rule_name_color(&f.rule)
+        ));
     }
-    body.push(String::from("│"));
+    body.push(side.clone());
 
     if let Some(acct) = &f.account {
         body.push(format!(
-            "│ {}  {}",
+            "{side} {}  {}",
             dim_label(&format!("{:<w$}", "acct", w = label_w)),
             acct
         ));
@@ -133,17 +135,17 @@ fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
     if let (Some(file), Some(line)) = (&f.file, f.line) {
         let col = f.column.map(|c| format!(":{c}")).unwrap_or_default();
         body.push(format!(
-            "│ {}  {}:{line}{col}",
+            "{side} {}  {}:{line}{col}",
             dim_label(&format!("{:<w$}", "file", w = label_w)),
             file
         ));
     }
 
-    body.push(String::from("│"));
-    body.push(format!("│  {}", f.message));
-    body.push(String::from("│"));
+    body.push(side.clone());
+    body.push(format!("{side}  {}", f.message));
+    body.push(side.clone());
     if let Some(hint) = &f.hint {
-        body.push(format!("│  {} {}", "▶".dimmed(), hint.dimmed()));
+        body.push(format!("{side}  {} {}", "▶".dimmed(), hint.dimmed()));
     }
     body.push(bottom.clone());
 
@@ -157,6 +159,54 @@ fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
         }
     }
     out
+}
+
+/// Build the top/bottom borders and the side character for a
+/// finding box, all colored per severity. The side is reused for
+/// every body row, so we pre-compute it once and pass it down.
+fn severity_border(
+    sev: Severity,
+    width: usize,
+    pad: usize,
+    sev_label: &str,
+) -> (String, String, String) {
+    // Pick a single color for the entire border. CRITICAL/HIGH
+    // share red (the convention: red = urgent, yellow = caution,
+    // cyan = info).
+    let border_colored = |s: &str| -> String {
+        if !tty::interactive() {
+            return s.to_string();
+        }
+        match sev {
+            Severity::Critical => s.bright_red(),
+            Severity::High => s.red(),
+            Severity::Medium => s.yellow(),
+            Severity::Low => s.cyan(),
+            Severity::Info => s.cyan(),
+        }
+        .to_string()
+    };
+    let h = border_colored("─");
+    let h_dash_count = h.chars().count();
+    // `pad` is the *display* width of the leading dashes (in
+    // characters). Because the colored crate wraps each `─` in
+    // ANSI codes, the underlying string is longer than `pad`
+    // chars. We need exactly `pad` rendered `─`s on the left.
+    let top = format!(
+        "╭{}{}{}╮",
+        (0..pad).map(|_| h.clone()).collect::<String>(),
+        severity_color(sev, sev_label),
+        (0..1).map(|_| h.clone()).collect::<String>()
+    );
+    let bottom = format!(
+        "╰{}╯",
+        (0..(width - 2)).map(|_| h.clone()).collect::<String>()
+    );
+    let side = border_colored("│");
+    // (We don't actually use h_dash_count, but the variable
+    // documents what the colored "─" string actually represents.)
+    let _ = h_dash_count;
+    (top, bottom, side)
 }
 
 /// Color the rule name cyan-ish so it stands out from the dim labels
@@ -290,9 +340,18 @@ pub fn print_summary_footer(findings: &[Finding], elapsed: Duration) {
         if n == 0 {
             // Show zero-count rows dimmed, so the user sees the full
             // severity spread even when no findings of a given level.
-            let row = format!(" {:<8} 0  {}", label, render_bar(0, total, false));
+            let (filled, empty) = render_bar(0, total, sev);
+            let row = format!(" {:<8}    0  {}{}", label, filled, empty);
             let row = if tty::interactive() {
-                severity_summary_color(sev, &row).dimmed().to_string()
+                // Severity-color the label, bold the count (here
+                // always 0), dim the rest of the row.
+                format!(
+                    " {}{}  0  {}{}",
+                    severity_summary_color(sev, label).bold(),
+                    "    ".dimmed(),
+                    filled,
+                    empty,
+                )
             } else {
                 row
             };
@@ -303,23 +362,38 @@ pub fn print_summary_footer(findings: &[Finding], elapsed: Duration) {
             .checked_mul(100)
             .and_then(|x| x.checked_div(total))
             .unwrap_or(0);
-        let row_label = format!(" {:<8} {:>2}  ", label, n);
-        let bar = render_bar(n, total, true);
-        let row = format!("{}{}  ({}%)", row_label, bar, pct);
-        let colored: String = if tty::interactive() {
-            severity_summary_color(sev, &row)
+        // Build the row in two halves: the labeled side (severity
+        // + count) and the bar (per-severity filled + dimmed empty).
+        // The bar segments are already pre-colored by render_bar,
+        // so we just concatenate.
+        let (filled, empty) = render_bar(n, total, sev);
+        // `row_label` is the static prefix that the animation
+        // re-prints before each bar frame. The full row is built
+        // below in the per-TTY path; the static path mirrors the
+        // plain text format so piped output is byte-stable.
+        let row_label = if tty::interactive() {
+            format!(
+                " {}{} {}{}  ",
+                severity_summary_color(sev, label).bold(),
+                " ".dimmed(),
+                format!("{}", n).bold(),
+                " ".dimmed(),
+            )
         } else {
-            row.clone()
+            format!(" {:<8} {:>2}  ", label, n)
         };
+        let row = format!("{}{}{}  ({}%)", row_label, filled, empty, pct);
         // Animated fill when interactive and not in CI.
         if tty::interactive() && std::env::var("CI").ok().as_deref() != Some("true") && total > 0 {
-            // We pass a `ColoredString` so the helper can render the
-            // final line with the severity color. The animated
-            // frames themselves render in dim white (see helper).
-            let cs = severity_color_to_colored(sev, &row);
-            print_animated_bar(&row_label, &bar, total, n, &cs);
+            // The animated frames re-render the bar with the
+            // severity-colored filled portion and dimmed `·` empty
+            // portion. The final clean line is the row we just
+            // built, with the label re-colored via the severity
+            // color so the helper can print it as a `ColoredString`.
+            let final_colored: ColoredString = severity_color_to_colored(sev, &row);
+            print_animated_bar(&row_label, &filled, total, n, sev, &final_colored);
         } else {
-            println!("{}", colored);
+            println!("{row}");
         }
     }
     println!();
@@ -335,16 +409,44 @@ pub fn print_summary_footer(findings: &[Finding], elapsed: Duration) {
     print_rule(80, "");
 }
 
-fn render_bar(n: usize, total: usize, _interactive: bool) -> String {
-    // 30-char bar. Filled portion uses block elements for a more
-    // visually solid look than ASCII `-`/`=`. The unfilled portion
-    // uses light shades so it still shows structure.
+/// Returns the `(filled, unfilled)` segments of a 30-char bar with
+/// per-severity coloring on the filled portion and a dimmed
+/// (always-gray) unfilled portion. The two segments are returned
+/// as a tuple so the caller can `format!` them into the row
+/// without losing the per-segment ANSI sequences.
+///
+/// `n` is the count, `total` is the total finding count.
+/// `sev` is the row's severity; we use it only for the filled color.
+/// `interactive` gates the colored crate — when piped or CI, the
+/// segments come back as plain strings.
+fn render_bar(n: usize, total: usize, sev: Severity) -> (String, String) {
+    // 30-char bar. Filled portion uses block elements (█) for a
+    // visually solid look. The unfilled portion uses middle dots
+    // (·, U+00B7) — they render cleanly in every monospace font
+    // including the default macOS Terminal font, unlike the light
+    // shade (░) which can look pixelated on some setups.
     const WIDTH: usize = 30;
-    if total == 0 {
-        return "░".repeat(WIDTH);
+    let filled = if total == 0 { 0 } else { (n * WIDTH) / total };
+
+    // Build the two raw segments first.
+    let raw_filled = "█".repeat(filled);
+    let raw_empty = "·".repeat(WIDTH - filled);
+
+    if tty::interactive() {
+        // Per-severity color for the filled portion. The unfilled
+        // portion is always dimmed so it reads as "background"
+        // against the severity-colored fill.
+        let colored_filled = match sev {
+            Severity::Critical => raw_filled.bright_red(),
+            Severity::High => raw_filled.red(),
+            Severity::Medium => raw_filled.yellow(),
+            Severity::Low => raw_filled.cyan(),
+            Severity::Info => raw_filled.white(),
+        };
+        (colored_filled.to_string(), raw_empty.dimmed().to_string())
+    } else {
+        (raw_filled, raw_empty)
     }
-    let filled = (n * WIDTH) / total;
-    format!("{}{}", "█".repeat(filled), "░".repeat(WIDTH - filled))
 }
 
 fn print_animated_bar(
@@ -352,18 +454,34 @@ fn print_animated_bar(
     _bar_unused: &str,
     total: usize,
     n: usize,
+    sev: Severity,
     final_colored: &ColoredString,
 ) {
-    // The bar fills left-to-right at 25ms/char, with a bright
-    // "shimmer head" (▓) that races ahead of the filled portion and
-    // fades out as it crosses. The shimmer is the visual signature
-    // — it makes the fill feel like liquid pouring in rather than a
-    // blocky resize.
+    // The bar fills left-to-right at 25ms/char. The filled portion
+    // is rendered in the row's severity color (red for CRITICAL,
+    // yellow for MEDIUM, etc.), the unfilled portion is always
+    // dimmed. A bright `▓` shimmer head races 1 cell ahead of
+    // the fill to give the animation a sense of motion.
     const WIDTH: usize = 30;
     let pct = n
         .checked_mul(100)
         .and_then(|x| x.checked_div(total))
         .unwrap_or(0);
+    // Per-severity color function, applied to the filled segment
+    // of every frame.
+    let color_for = |s: &str| -> String {
+        if !tty::interactive() {
+            return s.to_string();
+        }
+        match sev {
+            Severity::Critical => s.bright_red(),
+            Severity::High => s.red(),
+            Severity::Medium => s.yellow(),
+            Severity::Low => s.cyan(),
+            Severity::Info => s.white(),
+        }
+        .to_string()
+    };
     for i in 0..=WIDTH {
         let filled = (n * i) / WIDTH.max(1);
         // The leading edge of the bar: a brighter "shimmer" block.
@@ -372,15 +490,16 @@ fn print_animated_bar(
         let shimmer = if filled < WIDTH { filled } else { WIDTH - 1 };
         let mut bar = String::with_capacity(WIDTH * 3);
         for j in 0..WIDTH {
-            let ch = if j < filled {
-                "█"
+            let cell = if j < filled {
+                color_for("█")
             } else if j == shimmer && tty::interactive() {
-                // Bright white shimmer head — the only colored cell.
-                "▓"
+                // Bright white shimmer head — overrides the severity
+                // color so it stands out as a moving highlight.
+                "▓".bright_white().to_string()
             } else {
-                "░"
+                "·".dimmed().to_string()
             };
-            bar.push_str(ch);
+            bar.push_str(&cell);
         }
         let row = format!("{}{}  ({}%)", label, bar, pct);
         eprint!("\r\x1b[2K{row}");
