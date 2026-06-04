@@ -1,0 +1,29 @@
+{
+  "name": "anchor-sentinel",
+  "type": "module",
+  "description": "Static security analysis CLI for Solana Anchor programs",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eniyanyosuva/anchor-sentinel"
+  },
+  "files": [
+    "anchor_sentinel_bg.wasm",
+    "anchor_sentinel.js",
+    "anchor_sentinel.d.ts"
+  ],
+  "main": "anchor_sentinel.js",
+  "homepage": "https://github.com/eniyanyosuva/anchor-sentinel",
+  "types": "anchor_sentinel.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "solana",
+    "anchor",
+    "security",
+    "static-analysis",
+    "blockchain"
+  ]
+}
