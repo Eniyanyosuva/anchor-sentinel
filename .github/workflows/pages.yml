@@ -5,13 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Allow only one concurrent deployment; queueing newer runs and
-# dropping older ones keeps the gh-pages branch consistent.
 concurrency:
   group: pages
   cancel-in-progress: false
 
-# Direct git push to gh-pages — `contents: write` is enough.
 permissions:
   contents: write
 
@@ -33,62 +30,41 @@ jobs:
           cache-on-failure: true
 
       - name: Install wasm-pack
-        # Install via cargo (slow but reliable — the curl|sh installer
-        # hits a dash-vs-bash issue on the GitHub-hosted runners).
         run: cargo install wasm-pack --locked
 
-      - name: Build WASM module into playground/pkg/
-        run: wasm-pack build --target web --out-dir playground/pkg
-
-      - name: Deploy playground/ to the gh-pages branch
-        # We tried three different copy mechanisms before this one:
-        #
-        # 1. peaceiris/actions-gh-pages@v3 — its `cp -RfL` glob
-        #    silently dropped `playground/pkg/` from the deployed
-        #    tree.
-        # 2. A `git clone + cp -R + commit + push` shell script —
-        #    `cp -R` of `playground/.` into the tempdir only copied
-        #    `pkg/.gitignore` and dropped all the regular files
-        #    (`*.js`, `*.wasm`, `*.d.ts`, even `index.html` and
-        #    `README.md`). Root cause is unclear — likely a `cp -R`
-        #    edge case on the GitHub-hosted Ubuntu runner with
-        #    trailing-slash source paths and the `pkg/` parent dir
-        #    already existing.
-        # 3. The fix below: use `rsync -a --delete`. `rsync` is far
-        #    more reliable than `cp -R` for the `src/. dst/`
-        #    pattern; it handles dotfiles, permissions, and nested
-        #    directory contents uniformly. `--delete` ensures the
-        #    deployed tree matches the source exactly (no leftover
-        #    files from a previous deploy).
+      # Build AND deploy in the same step. In a previous version, the
+      # build and the deploy were separate steps, and somehow the
+      # `playground/pkg/` directory was always empty when the deploy
+      # step tried to read it (even though `ls` and `find` in the
+      # same deploy step showed the files). Building inline keeps
+      # everything in one shell, one filesystem view, one
+      # namespace.
+      - name: Build WASM and deploy to gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          echo "PWD: $(pwd)"
-          echo "Listing ./playground:"
-          ls -la ./playground
-          echo "Listing ./playground/pkg:"
-          ls -la ./playground/pkg 2>&1 || true
-          echo "rsync available: $(which rsync)"
+          # Build the WASM module.
+          wasm-pack build --target web --out-dir playground/pkg
+          echo "--- built; pkg/ has $(ls playground/pkg | wc -l) entries ---"
+          ls -la playground/pkg
+
+          # Clone the existing gh-pages branch into a temp dir.
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git clone --depth=1 --branch=gh-pages \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "$TMPDIR"
-          # Verbose rsync so the next failure mode is obvious. The
-          # trailing `/` on the source means "contents of playground/",
-          # not "the playground/ dir itself".
-          rsync -av --delete --exclude '.git' ./playground/ "$TMPDIR"/
-          echo "--- after rsync: tempdir contents ---"
-          ls -la "$TMPDIR"
-          find "$TMPDIR" -type f | head -20
+
+          # rsync the freshly built playground/ into the cloned
+          # gh-pages tree, replacing whatever was there.
+          rsync -a --delete --exclude '.git' ./playground/ "$TMPDIR"/
+
+          # Stage and commit.
           cd "$TMPDIR"
           git add --all
-          echo "--- git status after add ---"
           git status --short
-          # Allow no-op commits (e.g. re-running the workflow on the
-          # same SHA doesn't error out).
           git diff --cached --quiet || \
             git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
           git push origin gh-pages --force
