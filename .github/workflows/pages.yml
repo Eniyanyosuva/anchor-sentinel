@@ -60,18 +60,19 @@ jobs:
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "$TMPDIR"
           # Wipe the old gh-pages tree, then copy the fresh build in.
-          # We `rm -rf` and re-`cp` rather than relying on `cp` to
-          # overwrite in place — that ensures deleted files in the new
-          # build (e.g. a renamed rule's snapshot) actually go away.
+          # `rm -rf` + `cp -R` (rather than `cp -u` or `rsync`) makes
+          # sure deleted files in the new build actually disappear
+          # (e.g. a renamed rule's snapshot).
           rm -rf "$TMPDIR"/*
           cp -R ./playground/. "$TMPDIR"/
           cd "$TMPDIR"
+          # Stage everything we just copied. `git add --all` respects
+          # .gitignore, but `playground/pkg/` isn't in our ignore list
+          # (and the build produces real .wasm/.js files that must
+          # land in the deployed tree).
           git add --all
-          # `git add --all` respects .gitignore. The build output goes
-          # to `playground/pkg/`, which is not in our .gitignore, but
-          # we `git add --force` the directory just in case a future
-          # .gitignore change ever picks it up. `--force` is a no-op
-          # if the file is already staged, so this is safe.
-          git add --force --all playground/pkg || true
-          git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
+          # `git diff --cached --quiet` exits 0 when there's nothing
+          # to commit. Allow that as a no-op so re-running the
+          # workflow on the same commit doesn't fail.
+          git diff --cached --quiet || git commit -m "deploy: anchor-sentinel playground (commit ${GITHUB_SHA})"
           git push origin gh-pages --force
