@@ -72,6 +72,8 @@ jobs:
           cp -R ./playground/. "$TMPDIR"/
           echo "::group::tempdir after copy"
           ls -la "$TMPDIR"
+          echo "--- find $TMPDIR -type f ---"
+          find "$TMPDIR" -type f | head -30
           echo "::endgroup::"
           cd "$TMPDIR"
           # Stage everything we just copied. `git add --all` respects
