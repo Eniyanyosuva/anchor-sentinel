@@ -426,7 +426,10 @@ fn render_bar(n: usize, total: usize, sev: Severity) -> (String, String) {
     // including the default macOS Terminal font, unlike the light
     // shade (░) which can look pixelated on some setups.
     const WIDTH: usize = 30;
-    let filled = if total == 0 { 0 } else { (n * WIDTH) / total };
+    let filled = n
+        .checked_mul(WIDTH)
+        .and_then(|x| x.checked_div(total))
+        .unwrap_or(0);
 
     // Build the two raw segments first.
     let raw_filled = "█".repeat(filled);
