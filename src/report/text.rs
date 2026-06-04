@@ -483,7 +483,10 @@ fn print_animated_bar(
         .to_string()
     };
     for i in 0..=WIDTH {
-        let filled = (n * i) / WIDTH.max(1);
+        let filled = n
+            .checked_mul(i)
+            .and_then(|x| x.checked_div(WIDTH.max(1)))
+            .unwrap_or(0);
         // The leading edge of the bar: a brighter "shimmer" block.
         // Renders 1 char ahead of the filled portion (clamped at
         // the bar's right edge) so the head visibly leads the fill.
