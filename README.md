@@ -9,18 +9,15 @@ built from `src/wasm.rs`. No backend, no build step on the user side.
 
 ## Local development
 
-The WASM build emits `./pkg/anchor_sentinel.js` plus a `.wasm` file. To
-build and serve locally:
+The prebuilt WASM is checked into `playground/pkg/`, so you can serve
+the page directly:
 
 ```sh
-# 1. Build the WASM module. Output goes to playground/pkg/.
-wasm-pack build --target web --out-dir playground/pkg
-
-# 2. Serve playground/ on a local port. Python's stdlib is enough.
+# Serve playground/ on a local port. Python's stdlib is enough.
 cd playground
 python3 -m http.server 8080
 
-# 3. Open http://localhost:8080/ in a browser.
+# Open http://localhost:8080/ in a browser.
 ```
 
 Use any static file server you like — the only requirement is that the
@@ -28,6 +25,37 @@ server can serve `.wasm` with the correct MIME type
 (`application/wasm`). Most do, but if you hit issues, the
 [wasm-bindgen docs](https://rustwasm.github.io/docs/wasm-bindgen/web.html)
 list a few recipes.
+
+## Rebuilding the WASM
+
+The WASM in `playground/pkg/` is **checked into the repo** rather than
+built in CI. This keeps the Pages deploy trivial (a single `rsync`)
+and avoids a class of build-cache issues we hit with the in-CI flow.
+
+When you add or change a rule, rebuild the WASM and commit the new
+`pkg/`:
+
+```sh
+# 1. Install wasm-pack once. (Rust toolchain required.)
+cargo install wasm-pack --locked
+
+# 2. Build the WASM module. The first run will install
+#    `wasm-bindgen-cli` and take a few minutes; subsequent runs
+#    are fast.
+wasm-pack build --target web --out-dir playground/pkg
+
+# 3. Delete the wasm-pack-generated .gitignore (it would otherwise
+#    hide the built files from `git add`).
+rm playground/pkg/.gitignore
+
+# 4. Commit and push the regenerated pkg/.
+git add -f playground/pkg
+git commit -m "chore: rebuild WASM playground pkg"
+git push
+```
+
+The CI Pages workflow will pick up the new `pkg/` on the next push to
+`main` and deploy it.
 
 ## How it works
 
@@ -62,6 +90,12 @@ If you want to upgrade, see the [CodeMirror 6 migration guide](https://codemirro
 
 ## Production deploy
 
-The CI workflow `.github/workflows/pages.yml` builds the WASM module
-and deploys `playground/` to the `gh-pages` branch. The deployed
-playground is served at <https://eniyanyosuva.github.io/anchor-sentinel/>.
+The CI workflow `.github/workflows/pages.yml` deploys `playground/`
+to the `gh-pages` branch. The deployed playground is served at
+<https://eniyanyosuva.github.io/anchor-sentinel/>.
+
+The workflow has no Rust toolchain or `wasm-pack` step — it just
+checks out the source (which already contains the prebuilt
+`playground/pkg/`) and rsyncs `playground/` into a fresh clone of
+`gh-pages`. See "Rebuilding the WASM" above for how to refresh the
+pkg/ after a rule change.
