@@ -93,8 +93,10 @@ jobs:
               FAIL=1
             fi
             # Verify scanner produced recognizable output (not a crash).
-            # Match on text report markers like severity tags or `message:` lines.
-            if echo "$output" | grep -qE 'no findings|message:|\[(CRITICAL|HIGH|MEDIUM|LOW|INFO)\]'; then
+            # Match on text report markers: the box-drawing severity
+            # badge in the polished layout ("── CRITICAL ──"), the
+            # "no findings" line, or the per-finding "│ rule     …" body.
+            if echo "$output" | grep -qE 'no findings|─ (CRITICAL|HIGH|MEDIUM|LOW|INFO) ─|│ rule'; then
               echo "  output: OK"
             else
               echo "  ERROR: scanner produced no recognizable output"
