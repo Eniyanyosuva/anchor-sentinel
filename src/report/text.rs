@@ -1,13 +1,12 @@
 //! Human-readable CLI output. This is the only place in the codebase
-//! that emits ANSI color or Unicode glyphs; `format_findings` and the
-//! six `print_*` helpers return plain text and are the single entry
-//! points used by `main.rs`.
+//! that emits ANSI color or Unicode glyphs; the six `print_*` helpers
+//! and `print_rules_table` are the single entry points used by `main.rs`.
 //!
 //! All color calls are gated on `tty::interactive()`, so the test
 //! suite (which pipes stdout) gets a clean plain-text stream and the
 //! snapshot/integration tests don't need to filter ANSI escape codes.
 //!
-//! Design tenets (see /Users/enjo/.claude/plans/soft-doodling-stonebraker.md):
+//! Design tenets:
 //!   1. Information first — risk + critical findings + verdict visible in 3s.
 //!   2. Severity driven — Critical dominates; Medium never competes visually.
 //!   3. Progressive disclosure — overview → findings → details.
@@ -18,7 +17,7 @@ use std::time::Duration;
 
 use colored::*;
 
-use crate::engine::{Finding, Layer, Severity};
+use crate::engine::{Finding, Severity};
 use crate::report::tty;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -520,29 +519,6 @@ fn severity_color(sev: Severity) -> colored::Color {
     }
 }
 
-/// Visible (display) width of a string, counting Unicode chars but
-/// ignoring ANSI escape sequences. Kept from the previous version;
-/// the new design still uses it implicitly through `colored`'s
-/// `Display` impls, but we keep the function around in case a
-/// future section needs to right-pad colored text.
-#[allow(dead_code)]
-fn visible_width(s: &str) -> usize {
-    let mut count = 0usize;
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            for nc in chars.by_ref() {
-                if nc.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
-        }
-        count += 1;
-    }
-    count
-}
-
 /// Word-wrap `text` so no line exceeds `max_width` visible chars.
 /// Lines are broken on whitespace; if a single word is longer than
 /// `max_width` it is truncated to `max_width - 1` chars with `…`
@@ -674,11 +650,6 @@ pub fn print_rules_table() {
     }
     println!();
 }
-
-// `Layer` is imported but only used via `Display`; suppress the
-// unused-import warning the compiler would otherwise emit.
-#[allow(dead_code)]
-fn _layer_marker(_: Layer) {}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Unit tests
