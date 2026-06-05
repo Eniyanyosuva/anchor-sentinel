@@ -1,9 +1,6 @@
 # Anchor Sentinel
 
-> Static security analysis for Solana Anchor programs. Catches
-> missing signer checks, missing ownership constraints, unsafe
-> arithmetic, weak PDAs, and other common pitfalls — before you
-> ship.
+> Detect critical Solana smart contract vulnerabilities before deployment.
 
 [![crates.io](https://img.shields.io/crates/v/anchor-sentinel)](https://crates.io/crates/anchor-sentinel)
 [![CI](https://github.com/Eniyanyosuva/anchor-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/Eniyanyosuva/anchor-sentinel/actions)
@@ -11,69 +8,149 @@
 
 ---
 
-## Demo
+Anchor Sentinel analyzes Anchor programs for security vulnerabilities
+before deployment. It detects missing signer checks, ownership
+validation gaps, PDA misconfigurations, reinitialization risks,
+unsafe arithmetic, and other common Solana security mistakes —
+the same classes of bug that have shipped to mainnet in real
+programs.
 
-![anchor-sentinel in action](demo.gif)
+It is a first-pass security review system: fast, deterministic,
+and CI-friendly. Run it on every push. Treat a failing scan as
+a build break.
 
-## What it does
+## What it catches
 
-Anchor Sentinel reads your program's IDL (`target/idl/*.json`) and
-Rust source (`programs/*/src/lib.rs`), and runs **14 rules** against
-the combination. It catches the classes of bug that have shipped
-to mainnet in real Anchor programs — see [the rules catalog](docs/rules.md)
-for the full list.
+- Missing signer and ownership checks
+- PDA seed and bump canonicalization flaws
+- Account reinitialization via `init_if_needed`
+- Lamports conservation violations and unsafe arithmetic
+- Unsafe CPIs with dynamic signer seeds
+- Closing-account authorization gaps
+
+14 rules across 3 severity levels, covering 8 of 9 canonical
+[Sealevel Attack](https://github.com/coral-xyz/sealevel-attacks)
+classes. Full reference: [docs/rules.md](docs/rules.md).
+
+## Example
+
+Run against a vulnerable vault program:
 
 ```text
-$ sentinel scan ./my-anchor-program
-╭───────────────────────────────────────────────────────────────────╮
-│ ⚓ anchor-sentinel v0.4.0                                          │
-│ Solana smart contract security analyzer                            │
-╰──────────────────────────────────────────────────────────────────╯
-Scanning  ./my-anchor-program
-Rules     14 active  ·  3 critical  ·  7 high  ·  4 medium
+$ sentinel scan ./tests/fixtures/vault-vulnerable
 
-╭────────────────────────────────────────────────────────────── CRITICAL ─╮
-│ ▸  missing_balance_check (withdraw)                                │
-│                                                                      │
-│ acct     vault                                                       │
-│ file     programs/my_program/src/lib.rs:42:8                        │
-│                                                                      │
-│  Account `vault` has lamports debited by `amount` in `withdraw`     │
-│  without a preceding balance check.                                 │
-│                                                                      │
-│  ▶ Add a guard before the debit:                                    │
-│    `require!(vault.lamports() >= amount, ErrorCode::InsufficientFunds)` …
-╰──────────────────────────────────────────────────────────────────────╯
+Anchor Sentinel v0.4.0
+Static Security Analysis for Solana Programs
 
-(... more findings ...)
+Target:  ./tests/fixtures/vault-vulnerable
+✓  Loaded rules                   1ms
+✓  Parsed IDL                     0ms
+✓  Built AST                      2ms
+✓  Indexed accounts               2ms
+✓  Executed security checks       0ms
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ⚠  14 issues found  ·  scanned in 0.42s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- CRITICAL  7  ███████████████░░░░░░░░░░░░░░░  (50%)
- HIGH      3  ██████░░░░░░░░░░░░░░░░░░░░░░░░  (21%)
- MEDIUM    4  ████████░░░░░░░░░░░░░░░░░░░░░░  (28%)
- LOW       0  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Completed in 4ms
 
-→ Run with --format sarif to upload to GitHub Code Scanning.
-→ Run with --ignore <rule> to suppress a specific rule.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Security Overview
+
+Critical       7
+High           3
+Medium         4
+Low            0
+
+Risk Score     0/100
+Grade          F
+Verdict        DEPLOYMENT BLOCKED
+
+7 Critical findings must be resolved before deployment.
+
+CRITICAL
+
+●  missing_balance_check  ·  deposit
+
+Location:
+  ./tests/fixtures/vault-vulnerable/programs/vault/src/lib.rs:21:42
+
+Account:
+  user
+
+Problem:
+  Account `user` has lamports debited by `amount` in `deposit` without a preceding balance check. An
+  attacker can drain the account by calling with `amount > account.lamports()`.
+
+Recommendation:
+  Add a guard before the debit: `require!(user.lamports() >= amount, ErrorCode::InsufficientFunds)` or
+  use `checked_sub`.
+
+(... 13 more findings ...)
+
+DEPLOYMENT BLOCKED
+
+7 Critical findings must be resolved before deployment.
 ```
 
-The output uses rounded Unicode boxes, per-severity colors, and
-brief reveal animations on a real TTY. Piped output (CI, log
-files) gets clean plain text with no ANSI codes.
+Run against a clean program:
 
-## Why
+```text
+$ sentinel scan ./tests/fixtures/vault-clean
 
-Most Anchor vulnerabilities are mechanical to detect with a static
-scan: a missing `Signer<'info>` here, an `#[account(mut)]` skipped
-there, a `bump = bump` argument trap. Anchor Sentinel encodes the
-patterns into typed rules so you don't have to remember them.
+Anchor Sentinel v0.4.0
+Static Security Analysis for Solana Programs
 
-It's not a replacement for a security audit. It's the cheap first
-pass that catches the obvious stuff before the auditor (or the
-attacker) does.
+Target:  ./tests/fixtures/vault-clean
+✓  Loaded rules                   0ms
+✓  Parsed IDL                     0ms
+✓  Built AST                      1ms
+✓  Indexed accounts               1ms
+✓  Executed security checks       0ms
+
+Completed in 1ms
+
+Security Overview
+
+Critical       0
+High           0
+Medium         0
+Low            0
+
+Risk Score     100/100
+Grade          A
+Verdict        DEPLOYMENT APPROVED
+
+No findings detected. Codebase is clean.
+✔ no findings
+
+DEPLOYMENT APPROVED
+
+No findings detected. Codebase is clean.
+```
+
+## Deployment Verdict
+
+Every scan ends with one of three verdicts:
+
+| Verdict                     | Condition                                               |
+| --------------------------- | ------------------------------------------------------- |
+| `DEPLOYMENT APPROVED`       | No Critical findings. Risk Score 90-100.                |
+| `DEPLOYMENT REVIEW REQUIRED`| No Critical findings. Risk Score 50-89.                 |
+| `DEPLOYMENT BLOCKED`        | One or more Critical findings, OR Risk Score below 50.  |
+
+**The Verdict is authoritative.** A single Critical finding always
+overrides the score and blocks deployment, regardless of how
+benign the rest of the report looks.
+
+The **Risk Score** is informational: a 0-100 number derived from
+severity weights (`crit*25 + high*8 + med*3 + low`, clamped at 0).
+It is useful for tracking security posture over time but never
+overrides the Verdict.
+
+| Score  | Grade |
+| ------ | ----- |
+| 90-100 | A     |
+| 75-89  | B     |
+| 50-74  | C     |
+| 25-49  | D     |
+| 0-24   | F     |
 
 ## Install
 
@@ -81,72 +158,45 @@ attacker) does.
 cargo install anchor-sentinel
 ```
 
-That's it. The binary lands at `~/.cargo/bin/sentinel` and is
-picked up by your shell's `$PATH` automatically. To upgrade:
+The binary lands at `~/.cargo/bin/sentinel`. To upgrade:
 
 ```sh
 cargo install --force anchor-sentinel
 ```
 
-If you don't have a Rust toolchain, [install rustup](https://rustup.rs)
-first.
+Requires a stable Rust toolchain (1.70+). Get one at
+[rustup.rs](https://rustup.rs).
 
 You can also try the [WASM playground](https://eniyanyosuva.github.io/anchor-sentinel/)
 in your browser — no install required.
 
 ## Quickstart
 
-Inside an Anchor project (the directory that contains `Anchor.toml`),
-make sure you've built the IDL at least once:
+Inside an Anchor project (the directory containing `Anchor.toml`),
+make sure the IDL is built:
 
 ```sh
-anchor build        # generates target/idl/<program>.json
+anchor build        # writes target/idl/<program>.json
 ```
 
-Then run:
+Then:
 
 ```sh
-# Human-readable scan, default
-sentinel scan .
-
-# Machine-readable, for piping to other tools
-sentinel scan . --format json
-
-# SARIF for GitHub Code Scanning / VS Code
-sentinel scan . --format sarif
-
-# Treat any non-info finding as a build failure
-sentinel scan . --strict
-
-# Only show high/critical
-sentinel scan . --min-severity high
-
-# Skip a rule
-sentinel scan . --ignore missing_mut
-
-# List all 14 registered rules
-sentinel rules
+sentinel scan .                                # human-readable
+sentinel scan . --format json                   # machine-readable
+sentinel scan . --format sarif                  # GitHub Code Scanning
+sentinel scan . --strict                        # exit 1 on any non-info
+sentinel scan . --min-severity high             # exit 1 on high+
+sentinel scan . --ignore missing_mut            # suppress one rule
+sentinel rules                                  # list all rules
 ```
 
 For the full flag reference, run `sentinel scan --help` or see
-[CLI reference](docs/cli.md).
+[docs/cli.md](docs/cli.md).
 
-## Exit codes
+## CI integration
 
-| Code | Meaning |
-| ---- | ------- |
-| `0`  | No findings (or findings below the threshold) |
-| `1`  | Findings present and `--strict` (or `--min-severity`) triggered |
-| `2`  | Tool error — bad path, no IDL files, parse failure |
-| `130` | Interrupted (Ctrl+C) |
-
-Use these in CI: `sentinel scan . --strict` makes the build red on
-any non-info finding. `sentinel scan . --min-severity high` makes it
-red only on high or critical.
-
-## GitHub Action
-
-One-line CI integration. Create `.github/workflows/security.yml`:
+Drop a workflow into `.github/workflows/security.yml`:
 
 ```yaml
 name: Security Scan
@@ -166,100 +216,95 @@ jobs:
           fail-on-severity: high
 ```
 
-Findings show up as PR annotations and in the **Security** tab via
-SARIF. See [CI integration](docs/ci.md) for the full action
-reference and raw-CLI recipes for other CI systems.
+Findings show up as PR annotations and in the **Security** tab
+via SARIF. See [docs/ci.md](docs/ci.md) for raw-CLI recipes for
+other CI systems.
+
+## Exit codes
+
+| Code  | Meaning                                                   |
+| ----- | --------------------------------------------------------- |
+| `0`   | No findings (or findings below the threshold)             |
+| `1`   | Findings present and `--strict` (or `--min-severity`) hit |
+| `2`   | Tool error — bad path, no IDL files, parse failure        |
+| `130` | Interrupted (Ctrl+C)                                      |
 
 ## Rules
 
-Anchor Sentinel ships with **14 rules** spanning three severity
-levels and two analysis layers (IDL and AST). The full reference —
-including the exact pattern each rule checks, the test fixtures
-that exercise it, and a "false positives" note where applicable —
-lives in [docs/rules.md](docs/rules.md).
+14 rules spanning three severity levels and two analysis layers
+(IDL + AST). Coverage summary:
 
-Quick summary:
+- **3 Critical**: `cpi_signer_seed_validation`, `missing_balance_check`, `missing_signer`
+- **7 High**: `duplicate_mutable_accounts`, `lamports_drain`, `missing_bump_seed_canonicalization`, `missing_close_authority`, `missing_ownership`, `missing_reinit_guard`, `pda_misconfig`
+- **4 Medium**: `integer_cast_truncation`, `missing_mut`, `unchecked_balance_flow`, `unsafe_arithmetic`
 
-| Severity | Rules |
-| -------- | ----- |
-| Critical | `cpi_signer_seed_validation`, `missing_balance_check`, `missing_signer` |
-| High | `duplicate_mutable_accounts`, `lamports_drain`, `missing_bump_seed_canonicalization`, `missing_close_authority`, `missing_ownership`, `missing_reinit_guard`, `pda_misconfig` |
-| Medium | `integer_cast_truncation`, `missing_mut`, `unchecked_balance_flow`, `unsafe_arithmetic` |
+Each rule has a dedicated fixture under `tests/fixtures/`. See
+[docs/rules.md](docs/rules.md) for the full reference, including
+the exact pattern each rule checks, when it does not fire, and
+the real-world exploit it corresponds to.
 
-## Sealevel Attacks Coverage
+## Sealevel Attacks coverage
 
-Anchor Sentinel covers 8 of the 9 canonical [Sealevel Attacks](https://github.com/coral-xyz/sealevel-attacks):
+8 of 9 canonical [Sealevel Attacks](https://github.com/coral-xyz/sealevel-attacks)
+classes are covered:
 
-| # | Attack Class               | Status     | Rule(s)                                                    |
-|---|----------------------------|------------|------------------------------------------------------------|
-| 1 | Signer Authorization       | ✅ covered | missing_signer                                             |
-| 2 | Account Data Matching      | ✅ covered | missing_ownership                                          |
-| 3 | Owner Checks               | ✅ covered | missing_ownership                                          |
-| 4 | Arbitrary CPI              | ✅ covered | cpi_signer_seed_validation                                 |
-| 5 | Duplicate Mutable Accounts | ✅ covered | duplicate_mutable_accounts                                 |
-| 6 | Type Cosplay               | ⚠️ partial | missing_ownership (discriminator check TBD)                |
-| 7 | Reinitialization           | ✅ covered | missing_reinit_guard                                       |
-| 8 | Bump Seed Canonicalization | ✅ covered | missing_bump_seed_canonicalization + pda_misconfig         |
-| 9 | Closing Accounts           | ✅ covered | missing_close_authority + lamports_drain                   |
-
-## Real-World References
-
-| Rule | Reference |
-|------|-----------|
-| missing_signer | [Wormhole bridge hack, Feb 2022 — $320M loss](https://extropy-io.medium.com/solanas-wormhole-hack-post-mortem-analysis-3b68b9e88e13) |
-| pda_misconfig | [Sealevel Attacks #8 — Bump Seed Canonicalization](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/8-bump-seed-canonicalization) |
-| cpi_signer_seed_validation | [Sealevel Attacks #4 — Arbitrary CPI](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/4-arbitrary-cpi) |
-| duplicate_mutable_accounts | [Sealevel Attacks #5 — Duplicate Mutable Accounts](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/5-duplicate-mutable-accounts) |
-| missing_close_authority | [Sealevel Attacks #9 — Closing Accounts](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/9-closing-accounts) |
-| missing_ownership | [Sealevel Attacks #2 — Account Data Matching](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/2-account-data-matching) |
-| missing_reinit_guard | [Sealevel Attacks #7 — Reinitialization](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/7-reinitialization) |
+| Class                         | Status   | Rule(s)                                      |
+| ----------------------------- | -------- | -------------------------------------------- |
+| Signer Authorization          | covered  | `missing_signer`                             |
+| Account Data Matching         | covered  | `missing_ownership`                          |
+| Owner Checks                  | covered  | `missing_ownership`                          |
+| Arbitrary CPI                 | covered  | `cpi_signer_seed_validation`                 |
+| Duplicate Mutable Accounts    | covered  | `duplicate_mutable_accounts`                 |
+| Type Cosplay                  | partial  | `missing_ownership` (discriminator pending)  |
+| Reinitialization              | covered  | `missing_reinit_guard`                       |
+| Bump Seed Canonicalization    | covered  | `missing_bump_seed_canonicalization`         |
+| Closing Accounts              | covered  | `missing_close_authority` + `lamports_drain` |
 
 ## What it does NOT do
 
-- **No runtime simulation.** Anchor Sentinel is static analysis. It
-  reads the source and the IDL; it doesn't run your program.
-- **No fuzzing / property-based testing.** Pair it with
+Anchor Sentinel is a static analyzer and the first security
+layer — not a replacement for the rest.
+
+- **No runtime simulation.** It reads the IDL and the source. It
+  does not run your program.
+- **No fuzzing or property-based testing.** Pair it with
   [trident](https://github.com/Ackee-Labs-Blockchain/trident) or
-  [arbiter](https://github.com/Helios-CLI/arbiter) for that.
-- **No dependency audit.** Use `cargo audit` for crate vulnerabilities.
-- **No business-logic review.** A finding from sentinel is a
-  *symptom* of a class of bug; you still need to understand
-  whether the bug actually applies to your program.
-- **No IDL-only analysis.** If the IDL is out of date, findings
-  may be stale. Always run `anchor build` before `sentinel scan`.
+  [arbiter](https://github.com/Helios-CLI/arbiter).
+- **No dependency audit.** Use `cargo audit` for crate CVEs.
+- **No business-logic review.** A finding is a symptom of a
+  class of bug. You still need to understand whether the bug
+  applies to your program.
+- **No IDL-only analysis.** Always run `anchor build` first.
+  Stale IDLs produce stale findings.
+
+A passing scan reduces risk. It does not eliminate it. Pair
+Anchor Sentinel with a human audit, a fuzz harness, and
+runtime testing before mainnet.
 
 ## Troubleshooting
 
 **`error: no IDL files found`**
-Run `anchor build` inside the project first. Sentinel looks for
-`target/idl/*.json` (the path Anchor writes IDLs to). If you keep
-IDLs elsewhere, point the loader at it by symlinking the
-directory.
+Run `anchor build` inside the project first. Sentinel reads
+`target/idl/*.json` (the path Anchor writes IDLs to).
 
 **`error: could not parse IDL`**
-Your IDL is malformed or from a version Sentinel doesn't support.
-Sentinel auto-detects Anchor 0.30+ and legacy 0.29 IDLs. If
-neither parses, please open an issue with the IDL attached
-(strip account data first).
+The IDL is malformed or from a version Sentinel doesn't support.
+Sentinel auto-detects Anchor 0.30+ and legacy 0.29. If neither
+parses, open an issue with the IDL attached (strip account data).
 
-**`warning: field is typed AccountInfo, not Signer` fires on a field
-that *is* a Signer**
-This means the IDL and the source disagree — the field is a
-`Signer<'info>` in the Rust source but `signer: false` in the IDL.
-Re-run `anchor build` to regenerate the IDL, or fix the IDL
-manually.
+**A `Signer` field triggers a missing-signer warning**
+The IDL and source disagree: the field is typed `Signer<'info>`
+in the source but `signer: false` in the IDL. Re-run
+`anchor build`.
 
 **Plain text output on what should be a TTY**
-Some shells and CI runners don't allocate a real PTY for the
-binary, so `is_terminal::IsTerminal::is_terminal(stdout)` returns
-false. Run in a fresh Terminal.app or iTerm session to see the
-polished output. You can also force it with
-`script -q /dev/null sentinel scan .`.
+Some shells and CI runners don't allocate a real PTY, so
+`is_terminal` returns false. Run in a fresh Terminal.app or
+iTerm session, or use `script -q /dev/null sentinel scan .`.
 
 **`sentinel` not found after `cargo install`**
-Your shell's `$PATH` may not include `~/.cargo/bin`. Add
-`export PATH="$HOME/.cargo/bin:$PATH"` to your shell profile
-(`~/.zshrc`, `~/.bashrc`).
+Add `~/.cargo/bin` to your `$PATH` (e.g. `export PATH="$HOME/.cargo/bin:$PATH"`
+in `~/.zshrc`).
 
 ## License
 
