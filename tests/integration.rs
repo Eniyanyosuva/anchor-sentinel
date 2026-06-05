@@ -140,8 +140,8 @@ fn reinit_vulnerable_triggers_missing_reinit_guard() {
     // `init_if_needed` with no `has_one` and no `constraint`. The rule
     // should fire once per (struct, field) — three findings total, all
     // pointing at the `state` field.
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/reinit-vulnerable");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reinit-vulnerable");
     let output = sentinel()
         .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
         .output()
@@ -166,23 +166,14 @@ fn reinit_vulnerable_triggers_missing_reinit_guard() {
             f["account"], "state",
             "expected account=state on every finding, got: {f}"
         );
-        assert_eq!(
-            f["severity"], "high",
-            "expected high severity, got: {f}"
-        );
+        assert_eq!(f["severity"], "high", "expected high severity, got: {f}");
         assert!(
-            f["message"]
-                .as_str()
-                .unwrap()
-                .contains("init_if_needed"),
+            f["message"].as_str().unwrap().contains("init_if_needed"),
             "expected message to mention init_if_needed, got: {}",
             f["message"]
         );
         assert!(
-            f["hint"]
-                .as_str()
-                .unwrap()
-                .contains("constraint ="),
+            f["hint"].as_str().unwrap().contains("constraint ="),
             "expected hint to recommend a `constraint =` expression, got: {}",
             f["hint"]
         );
@@ -194,8 +185,8 @@ fn reinit_clean_has_no_missing_reinit_guard() {
     // The reinit-clean fixture uses `init_if_needed` with two safe
     // patterns: `has_one = authority` and `constraint = state.owner ==
     // user.key() @ …`. Neither should trigger the rule.
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/reinit-clean");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reinit-clean");
     let output = sentinel()
         .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
         .output()
