@@ -11,10 +11,14 @@
 
 ---
 
+## Demo
+
+![anchor-sentinel in action](demo.gif)
+
 ## What it does
 
 Anchor Sentinel reads your program's IDL (`target/idl/*.json`) and
-Rust source (`programs/*/src/lib.rs`), and runs **13 rules** against
+Rust source (`programs/*/src/lib.rs`), and runs **14 rules** against
 the combination. It catches the classes of bug that have shipped
 to mainnet in real Anchor programs — see [the rules catalog](docs/rules.md)
 for the full list.
@@ -22,11 +26,11 @@ for the full list.
 ```text
 $ sentinel scan ./my-anchor-program
 ╭───────────────────────────────────────────────────────────────────╮
-│ ⚓ anchor-sentinel v0.3.0                                          │
+│ ⚓ anchor-sentinel v0.4.0                                          │
 │ Solana smart contract security analyzer                            │
 ╰──────────────────────────────────────────────────────────────────╯
 Scanning  ./my-anchor-program
-Rules     13 active  ·  3 critical  ·  6 high  ·  4 medium
+Rules     14 active  ·  3 critical  ·  7 high  ·  4 medium
 
 ╭────────────────────────────────────────────────────────────── CRITICAL ─╮
 │ ▸  missing_balance_check (withdraw)                                │
@@ -120,7 +124,7 @@ sentinel scan . --min-severity high
 # Skip a rule
 sentinel scan . --ignore missing_mut
 
-# List all 13 registered rules
+# List all 14 registered rules
 sentinel rules
 ```
 
@@ -168,7 +172,7 @@ reference and raw-CLI recipes for other CI systems.
 
 ## Rules
 
-Anchor Sentinel ships with **13 rules** spanning three severity
+Anchor Sentinel ships with **14 rules** spanning three severity
 levels and two analysis layers (IDL and AST). The full reference —
 including the exact pattern each rule checks, the test fixtures
 that exercise it, and a "false positives" note where applicable —
@@ -179,8 +183,36 @@ Quick summary:
 | Severity | Rules |
 | -------- | ----- |
 | Critical | `cpi_signer_seed_validation`, `missing_balance_check`, `missing_signer` |
-| High | `duplicate_mutable_accounts`, `lamports_drain`, `missing_bump_seed_canonicalization`, `missing_close_authority`, `missing_ownership`, `pda_misconfig` |
+| High | `duplicate_mutable_accounts`, `lamports_drain`, `missing_bump_seed_canonicalization`, `missing_close_authority`, `missing_ownership`, `missing_reinit_guard`, `pda_misconfig` |
 | Medium | `integer_cast_truncation`, `missing_mut`, `unchecked_balance_flow`, `unsafe_arithmetic` |
+
+## Sealevel Attacks Coverage
+
+Anchor Sentinel covers 8 of the 9 canonical [Sealevel Attacks](https://github.com/coral-xyz/sealevel-attacks):
+
+| # | Attack Class               | Status     | Rule(s)                                                    |
+|---|----------------------------|------------|------------------------------------------------------------|
+| 1 | Signer Authorization       | ✅ covered | missing_signer                                             |
+| 2 | Account Data Matching      | ✅ covered | missing_ownership                                          |
+| 3 | Owner Checks               | ✅ covered | missing_ownership                                          |
+| 4 | Arbitrary CPI              | ✅ covered | cpi_signer_seed_validation                                 |
+| 5 | Duplicate Mutable Accounts | ✅ covered | duplicate_mutable_accounts                                 |
+| 6 | Type Cosplay               | ⚠️ partial | missing_ownership (discriminator check TBD)                |
+| 7 | Reinitialization           | ✅ covered | missing_reinit_guard                                       |
+| 8 | Bump Seed Canonicalization | ✅ covered | missing_bump_seed_canonicalization + pda_misconfig         |
+| 9 | Closing Accounts           | ✅ covered | missing_close_authority + lamports_drain                   |
+
+## Real-World References
+
+| Rule | Reference |
+|------|-----------|
+| missing_signer | [Wormhole bridge hack, Feb 2022 — $320M loss](https://extropy-io.medium.com/solanas-wormhole-hack-post-mortem-analysis-3b68b9e88e13) |
+| pda_misconfig | [Sealevel Attacks #8 — Bump Seed Canonicalization](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/8-bump-seed-canonicalization) |
+| cpi_signer_seed_validation | [Sealevel Attacks #4 — Arbitrary CPI](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/4-arbitrary-cpi) |
+| duplicate_mutable_accounts | [Sealevel Attacks #5 — Duplicate Mutable Accounts](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/5-duplicate-mutable-accounts) |
+| missing_close_authority | [Sealevel Attacks #9 — Closing Accounts](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/9-closing-accounts) |
+| missing_ownership | [Sealevel Attacks #2 — Account Data Matching](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/2-account-data-matching) |
+| missing_reinit_guard | [Sealevel Attacks #7 — Reinitialization](https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/7-reinitialization) |
 
 ## What it does NOT do
 
