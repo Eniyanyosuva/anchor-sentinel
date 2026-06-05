@@ -13,7 +13,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::engine::{AnalysisContext, AstHint, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHint, AstHintKind, Finding, Layer, Rule, Severity};
 
 /// `(file, fn_name)` key for grouping hints per handler function.
 type FnKey = (String, String);
@@ -29,6 +29,9 @@ impl Rule for LamportsDrain {
     }
     fn severity(&self) -> Severity {
         Severity::High
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

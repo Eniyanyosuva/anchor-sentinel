@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 const DEST_NAMES: &[&str] = &[
     "destination",
@@ -31,6 +31,9 @@ impl Rule for MissingMut {
     }
     fn severity(&self) -> Severity {
         Severity::Medium
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

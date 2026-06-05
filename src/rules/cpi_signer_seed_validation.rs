@@ -23,7 +23,7 @@
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity, SignerSeedClass};
+use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity, SignerSeedClass};
 
 pub struct CpiSignerSeedValidation;
 
@@ -36,6 +36,9 @@ impl Rule for CpiSignerSeedValidation {
     }
     fn severity(&self) -> Severity {
         Severity::Critical
+    }
+    fn layer(&self) -> Layer {
+        Layer::Ast
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

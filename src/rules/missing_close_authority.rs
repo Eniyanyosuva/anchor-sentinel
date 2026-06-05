@@ -23,7 +23,7 @@
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct MissingCloseAuthority;
 
@@ -36,6 +36,9 @@ impl Rule for MissingCloseAuthority {
     }
     fn severity(&self) -> Severity {
         Severity::High
+    }
+    fn layer(&self) -> Layer {
+        Layer::Ast
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

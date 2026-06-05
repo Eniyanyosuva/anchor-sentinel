@@ -13,7 +13,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct MissingOwnership;
 
@@ -26,6 +26,9 @@ impl Rule for MissingOwnership {
     }
     fn severity(&self) -> Severity {
         Severity::High
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

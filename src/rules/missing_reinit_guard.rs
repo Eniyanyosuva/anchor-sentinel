@@ -29,7 +29,7 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct MissingReinitGuard;
 
@@ -42,6 +42,9 @@ impl Rule for MissingReinitGuard {
     }
     fn severity(&self) -> Severity {
         Severity::High
+    }
+    fn layer(&self) -> Layer {
+        Layer::Ast
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

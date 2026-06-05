@@ -1,20 +1,17 @@
 Output demo.gif
 
-Set FontSize 14
-Set Width 900
-Set Height 600
+Set Width 1200
+Set Height 750
+Set FontSize 12
 Set Theme "Dracula"
-Set PlaybackSpeed 1.0
 Set TypingSpeed 80ms
+Set PlaybackSpeed 1.0
 
 # Show the scan
 Type "sentinel scan ./tests/fixtures/vault-vulnerable"
 Sleep 500ms
 Enter
-Sleep 5s
-
-# Pause on the summary footer so viewer can read it
-Sleep 2s
+Sleep 6s
 
 # Clear and show rules list
 Type "clear"

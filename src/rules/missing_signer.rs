@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 const SUSPECT_NAMES: &[&str] = &[
     "authority",
@@ -39,6 +39,9 @@ impl Rule for MissingSigner {
     }
     fn severity(&self) -> Severity {
         Severity::Critical
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

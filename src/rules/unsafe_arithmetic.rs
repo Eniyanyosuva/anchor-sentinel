@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct UnsafeArithmetic;
 
@@ -22,6 +22,9 @@ impl Rule for UnsafeArithmetic {
     }
     fn severity(&self) -> Severity {
         Severity::Medium
+    }
+    fn layer(&self) -> Layer {
+        Layer::Ast
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

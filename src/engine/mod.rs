@@ -319,6 +319,37 @@ pub enum AstHintKind {
     IntegerCast { from_ty: String, to_ty: String },
 }
 
+/// Which analysis layer(s) a rule consults. Surfaced as a column in
+/// the `sentinel rules` table so users can tell at a glance whether a
+/// rule needs only the IDL or also the Rust source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    /// IDL-only — needs nothing beyond the parsed `target/idl/*.json`.
+    Idl,
+    /// AST-only — needs the Rust source via the proc-macro AST hints.
+    Ast,
+    /// Both — combines signals from IDL and AST (e.g. matches by
+    /// account name from the IDL, then cross-checks with `#[account]`
+    /// constraints parsed from the source).
+    IdlAst,
+}
+
+impl Layer {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Layer::Idl => "IDL",
+            Layer::Ast => "AST",
+            Layer::IdlAst => "IDL+AST",
+        }
+    }
+}
+
+impl std::fmt::Display for Layer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// The interface every rule implements.
 pub trait Rule: Send + Sync {
     /// Stable identifier used in `--ignore` flags and JSON output.
@@ -327,6 +358,14 @@ pub trait Rule: Send + Sync {
     fn description(&self) -> &'static str;
     /// Default severity for findings from this rule.
     fn severity(&self) -> Severity;
+    /// Which analysis layer(s) this rule consults. Surfaced as the
+    /// `Layer` column in `sentinel rules`. Defaults to `IdlAst` so
+    /// newly added rules (or out-of-tree implementors) don't have to
+    /// override it immediately — they can pick the most permissive
+    /// value and refine later.
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
+    }
     /// Inspect the context and return any findings.
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>>;
 }

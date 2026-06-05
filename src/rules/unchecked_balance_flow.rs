@@ -15,7 +15,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct UncheckedBalanceFlow;
 
@@ -28,6 +28,9 @@ impl Rule for UncheckedBalanceFlow {
     }
     fn severity(&self) -> Severity {
         Severity::Medium
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {

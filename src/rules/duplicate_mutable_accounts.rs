@@ -17,7 +17,7 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct DuplicateMutableAccounts;
 
@@ -30,6 +30,9 @@ impl Rule for DuplicateMutableAccounts {
     }
     fn severity(&self) -> Severity {
         Severity::High
+    }
+    fn layer(&self) -> Layer {
+        Layer::IdlAst
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
