@@ -2,7 +2,7 @@
   "name": "anchor-sentinel",
   "type": "module",
   "description": "Static security analysis CLI for Solana Anchor programs",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "repository": {
     "type": "git",
